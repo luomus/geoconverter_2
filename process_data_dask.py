@@ -212,9 +212,7 @@ def zip_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
                 process_file_in_zip(filename, z, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters)
 
 if __name__ == "__main__":
-    logging.info("Starting process...")
+    logging.info("Starting process locally...")
 
-    # Measure the time taken to process the ZIP file
-    time_taken = timeit.timeit(lambda: zip_to_gpkg("test_data/HBF.93412.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067"), number=1)
-    logging.info(f"Time taken to load data (Dask): {time_taken:.2f} seconds")
+    zip_to_gpkg("test_data/HBF.93412.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067")
 

@@ -52,6 +52,7 @@ event_issue_message,Gathering.Quality.Issue.Message,category
 time_issue,Gathering.Quality.TimeIssue.Issue,category
 time_issue_source,Gathering.Quality.TimeIssue.Source,category
 time_issue_message,Gathering.Quality.TimeIssue.Message,object
+location_id,Document.NamedPlaceID,object
 location_issue,Gathering.Quality.LocationIssue.Issue,category
 location_issue_source,Gathering.Quality.LocationIssue.Source,category
 location_issue_message,Gathering.Quality.LocationIssue.Message,object
@@ -114,3 +115,5 @@ document_media_count,Document.MediaCount,int
 namedplace_id,Document.NamedPlaceID,object
 geometry,geometry,geometry
 name_according_to,Unit.NameAccordingTo,category
+detailed_record_basis,Unit.DetailedRecordBasis,category
+taxon_checklist,Unit.Linkings.Taxon.Checklist,category

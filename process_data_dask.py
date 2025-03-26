@@ -121,7 +121,7 @@ def save_partition(partition, crs, output_gpkg, geom_type):
 
     # Write the partition to the GeoPackage file
     with write_lock:
-        write_dataframe(gdf, output_gpkg, driver="GPKG", append=True)
+        write_dataframe(gdf, output_gpkg, driver="GPKG", promote_to_multi=True, append=True)
 
 def process_file_in_zip(filename, z, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters):
     """
@@ -153,7 +153,6 @@ def process_file_in_zip(filename, z, output_gpkg, geom_type, crs, dtype_dict, co
 
             # Convert WKT strings to Shapely geometries
             ddf["geometry"] = ddf["Gathering.Conversions.WGS84_WKT"].map(safe_loads)
-            ddf = ddf.dropna(subset=["geometry"])
 
             # Rename and reorder columns based on the lookup table
             ddf = ddf.rename(columns=column_mapping)

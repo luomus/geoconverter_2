@@ -121,7 +121,7 @@ def save_partition(partition, crs, output_gpkg, geom_type):
 
     # Write the partition to the GeoPackage file
     with write_lock:
-        write_dataframe(gdf, output_gpkg, driver="GPKG", promote_to_multi=True, append=True)
+        write_dataframe(gdf, output_gpkg, driver="GPKG", encoding='utf8', promote_to_multi=True, append=True)
 
 def process_file_in_zip(filename, z, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters):
     """
@@ -213,5 +213,5 @@ def zip_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
 if __name__ == "__main__":
     logging.info("Starting process locally...")
 
-    zip_to_gpkg("test_data/HBF.93412.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067")
+    zip_to_gpkg("test_data/HBF.58844.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067")
 

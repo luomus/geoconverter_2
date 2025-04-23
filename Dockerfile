@@ -5,8 +5,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src/main.py .
-COPY src/process_data_dask.py .
-COPY src/lookup_table.csv .
+COPY src/* .
+COPY .env .
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

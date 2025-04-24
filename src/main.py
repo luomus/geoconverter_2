@@ -103,7 +103,6 @@ async def convert_with_id(
   fmt: Literal["gpkg"],
   geo: Literal["bbox", "point", "footprint"],
   crs: Literal["euref","wgs84"],
-  timeout: float = 30,
   personToken: str | None = None,
   background_tasks: BackgroundTasks = None
 ):

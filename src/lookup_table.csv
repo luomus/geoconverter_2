@@ -1,119 +1,129 @@
-translated_var,finbif_api_var,dtype
-record_id,Unit.UnitID,object
-record_order,Unit.UnitOrder,int
-reported_name,Unit.TaxonVerbatim,object
-record_issue,Unit.Quality.Issue.Issue,object
-record_issue_source,Unit.Quality.Issue.Source,object
-record_issue_message,Unit.Quality.Issue.Message,object
-reported_taxon_confidence,Unit.ReportedTaxonConfidence,object
-taxon_id,Taxon.ID,object
-taxonomic_order,Taxon.TaxonomicOrder,int
-scientific_name_interpreted,Taxon.ScientificName,object
-common_name_finnish,Taxon.FinnishName,object
-common_name_english,Taxon.EnglishName,object
-common_name_swedish,Taxon.SwedishName,object
-red_list_status,Taxon.LatestRedListStatus,object
-threatened_status,Taxon.Lajiturva,object
-regulatory_status_finnish,Taxon.StatusesFI,object
-informal_groups_finnish,Taxon.InformalGroupFI,object
-informal_groups_english,Taxon.InformalGroupEN,object
-abundance_verbatim,Unit.Abundance,object
-abundance_unit,Unit.AbundanceUnit,object
-annotated_taxon_id,Unit.Interpretations.AnnotatedTaxonId,object
-abundance_interpreted,Unit.Interpretations.IndividualCount,int
-pair_abundance,Unit.Interpretations.PairCount,int
-invasive_control_class,Unit.Interpretations.InvasiveControl,object
-record_quality,Unit.Interpretations.RecordQuality,object
-record_derived_tags,Unit.Interpretations.Tags,object
-record_basis,Unit.RecordBasis,object
-type_specimen,Unit.TypeSpecimen,bool
-determiner,Unit.Det,object
-sex,Unit.Sex,category
-life_stage,Unit.LifeStage,category
-is_wild,Unit.Wild,category
-is_alive,Unit.Alive,bool
-local,Unit.Local,bool
-record_keywords,Unit.Keywords,object
-is_breeding_location,Unit.BreedingSite,bool
-plant_status_code,Unit.PlantStatusCode,category
-atlas_code_id,Unit.AtlasCode,category
-atlas_class_id,Unit.AtlasClass,category
-individual_id,Unit.IndividualID,object
-record_notes,Unit.Notes,object
-record_annotation_count,Unit.AnnotationCount,int
-record_media_count,Unit.MediaCount,int
-sample_count,Unit.SampleCount,int
-event_id,Gathering.GatheringID,object
-event_order,Gathering.GatheringOrder,int
-section,Gathering.GatheringSection,int
-event_issue,Gathering.Quality.Issue.Issue,category
-event_issue_source,Gathering.Quality.Issue.Source,object
-event_issue_message,Gathering.Quality.Issue.Message,category
-time_issue,Gathering.Quality.TimeIssue.Issue,category
-time_issue_source,Gathering.Quality.TimeIssue.Source,category
-time_issue_message,Gathering.Quality.TimeIssue.Message,object
-location_id,Document.NamedPlaceID,object
-location_issue,Gathering.Quality.LocationIssue.Issue,category
-location_issue_source,Gathering.Quality.LocationIssue.Source,category
-location_issue_message,Gathering.Quality.LocationIssue.Message,object
-date_start,Gathering.Date.Begin,object
-date_end,Gathering.Date.End,object
-hour_start,Gathering.HourBegin,int
-hour_end,Gathering.HourEnd,int
-formatted_date_time,Gathering.DisplayDateTime,object
-team,Gathering.TeamMembers,object
-lat_10_ykj,Gathering.Conversions.YKJ_10KM.Lat(N),int
-lon_10_ykj,Gathering.Conversions.YKJ_10KM.Lon(E),int
-lat_1_ykj,Gathering.Conversions.YKJ_1KM.Lat(N),int
-lon_1_ykj,Gathering.Conversions.YKJ_1KM.Lon(E),int
-century,Gathering.Conversions.Century,int
-decade,Gathering.Conversions.Decade,int
-year,Gathering.Conversions.Year,int
-month,Gathering.Conversions.Month,int
-day,Gathering.Conversions.Day,int
-ordinal_day_start,Gathering.Conversions.DayOfYearBegin,int
-ordinal_day_end,Gathering.Conversions.DayOfYearEnd,int
-coordinates_uncertainty_interpreted,Gathering.Interpretations.CoordinateAccuracy,int
-coordinates_source,Gathering.Interpretations.CoordinateSource,category
-country_id,Gathering.Interpretations.Country,object
-bio_province_interpreted,Gathering.Interpretations.Bioprovince,object
-municipality,Gathering.Interpretations.Municipality,object
-country_source,Gathering.Interpretations.CountrySource,object
-bio_province_source,Gathering.Interpretations.BioProvinceSource,object
-municipality_source,Gathering.Interpretations.MunicipalitySource,object
-state_land,Gathering.StateLand,bool
-accurate_area,Gathering.AccurateArea,bool
-higher_geography,Gathering.HigherGeographyVerbatim,object
-country_verbatim,Gathering.CountryVerbatim,object
-municipality_verbatim,Gathering.MunicipalityVerbatim,object
-province_verbatim,Gathering.BioProvinceVerbatim,object
-region_verbatim,Gathering.ProvinceVerbatim,object
-locality,Gathering.LocalityVerbatim,object
-event_notes,Gathering.Notes,object
-event_media_count,Gathering.MediaCount,int
-document_id,Document.DocumentID,object
-restriction_level,Document.DataSecureLevel,category
-restriction_reason,Document.DataSecureReasons,category
-is_partial,Document.PartialDocument,bool
-collection_id,Document.CollectionID,object
-license,Document.License,category
-data_source,Document.OriginalDataSource,category
-collection_quality,Document.Linkings.CollectionQuality,category
-document_issue,Document.Quality.Issue.Issue,category
-document_issue_source,Document.Quality.Issue.Source,category
-document_issue_message,Document.Quality.Issue.Message,object
-source_id,Document.SourceID,object
-site_type,Document.MonitoringSiteType,category
-site_status,Document.MonitoringSiteStatus,category
-document_keywords,Document.Keywords,object
-first_load_date,Document.FirstLoadDate,object
-load_date,Document.LoadDate,object
-date_created,Document.Created,object
-modified_date,Document.Modified,object
-document_notes,Document.Notes,object
-document_media_count,Document.MediaCount,int
-namedplace_id,Document.NamedPlaceID,object
-geometry,geometry,geometry
-name_according_to,Unit.NameAccordingTo,category
-detailed_record_basis,Unit.DetailedRecordBasis,category
-taxon_checklist,Unit.Linkings.Taxon.Checklist,category
+translated_var,finbif_api_var,dtype,lite_download_var
+record_id,Unit.UnitID,object,Havainnon tunniste
+record_order,Unit.UnitOrder,int,
+reported_name,Unit.TaxonVerbatim,object,Alkuperäinen nimi
+record_issue,Unit.Quality.Issue.Issue,object,
+record_issue_source,Unit.Quality.Issue.Source,object,
+record_issue_message,Unit.Quality.Issue.Message,object,
+reported_taxon_confidence,Unit.ReportedTaxonConfidence,object,Havainnoitsijan oman määrityksen varmuus
+taxon_id,Taxon.ID,object,
+taxonomic_order,Taxon.TaxonomicOrder,int,Taksonominen järjestys
+scientific_name_interpreted,Taxon.ScientificName,object,Tieteellinen nimi
+common_name_finnish,Taxon.FinnishName,object,Suositeltu yleiskielinen nimi
+common_name_english,Taxon.EnglishName,object,
+common_name_swedish,Taxon.SwedishName,object,
+red_list_status,Taxon.LatestRedListStatus,object,Uhanalaisuusluokka
+threatened_status,Taxon.Lajiturva,object,
+regulatory_status_finnish,Taxon.StatusesFI,object,
+informal_groups_finnish,Taxon.InformalGroupFI,object,
+informal_groups_english,Taxon.InformalGroupEN,object,
+abundance_verbatim,Unit.Abundance,object,Määrä
+abundance_unit,Unit.AbundanceUnit,object,Määrän yksikkö
+annotated_taxon_id,Unit.Interpretations.AnnotatedTaxonId,object,
+abundance_interpreted,Unit.Interpretations.IndividualCount,int,Yksilömäärä (tulkittu)
+pair_abundance,Unit.Interpretations.PairCount,int,
+invasive_control_class,Unit.Interpretations.InvasiveControl,object,
+record_quality,Unit.Interpretations.RecordQuality,object,Havainnon luotettavuus
+record_derived_tags,Unit.Interpretations.Tags,object,
+record_basis,Unit.RecordBasis,object,Havaintotapa
+type_specimen,Unit.TypeSpecimen,bool,
+determiner,Unit.Det,object,Määrittäjä (det.)
+sex,Unit.Sex,category,Sukupuoli
+life_stage,Unit.LifeStage,category,Elinvaihe
+is_wild,Unit.Wild,category,
+is_alive,Unit.Alive,bool,
+local,Unit.Local,bool,
+record_keywords,Unit.Keywords,object,
+is_breeding_location,Unit.BreedingSite,bool,
+plant_status_code,Unit.PlantStatusCode,category,
+atlas_code_id,Unit.AtlasCode,category,Pesimävarmuusindeksi
+atlas_class_id,Unit.AtlasClass,category,Pesimävarmuusluokka
+individual_id,Unit.IndividualID,object,
+record_notes,Unit.Notes,object,Havainnon lisätiedot
+record_annotation_count,Unit.AnnotationCount,int,
+record_media_count,Unit.MediaCount,int,
+sample_count,Unit.SampleCount,int,
+event_id,Gathering.GatheringID,object,
+event_order,Gathering.GatheringOrder,int,
+section,Gathering.GatheringSection,int,
+event_issue,Gathering.Quality.Issue.Issue,category,
+event_issue_source,Gathering.Quality.Issue.Source,object,
+event_issue_message,Gathering.Quality.Issue.Message,category,
+time_issue,Gathering.Quality.TimeIssue.Issue,category,
+time_issue_source,Gathering.Quality.TimeIssue.Source,category,
+time_issue_message,Gathering.Quality.TimeIssue.Message,object,
+location_id,Document.NamedPlaceID,object,
+location_issue,Gathering.Quality.LocationIssue.Issue,category,
+location_issue_source,Gathering.Quality.LocationIssue.Source,category,
+location_issue_message,Gathering.Quality.LocationIssue.Message,object,
+date_start,Gathering.Date.Begin,object,
+date_end,Gathering.Date.End,object,
+hour_start,Gathering.HourBegin,int,
+hour_end,Gathering.HourEnd,int,
+formatted_date_time,Gathering.DisplayDateTime,object,Aika
+team,Gathering.TeamMembers,object,Havainnoija(t)/Kerääjä(t)
+lat_10_ykj,Gathering.Conversions.YKJ_10KM.Lat(N),int,
+lon_10_ykj,Gathering.Conversions.YKJ_10KM.Lon(E),int,
+lat_1_ykj,Gathering.Conversions.YKJ_1KM.Lat(N),int,
+lon_1_ykj,Gathering.Conversions.YKJ_1KM.Lon(E),int,
+century,Gathering.Conversions.Century,int,
+decade,Gathering.Conversions.Decade,int,
+year,Gathering.Conversions.Year,int,
+month,Gathering.Conversions.Month,int,
+day,Gathering.Conversions.Day,int,
+ordinal_day_start,Gathering.Conversions.DayOfYearBegin,int,Alkupäivän numero
+ordinal_day_end,Gathering.Conversions.DayOfYearEnd,int,Loppupäivän numero
+coordinates_uncertainty_interpreted,Gathering.Interpretations.CoordinateAccuracy,int,Paikan tarkkuus (m)
+coordinates_source,Gathering.Interpretations.CoordinateSource,category,
+country_id,Gathering.Interpretations.Country,object,
+bio_province_interpreted,Gathering.Interpretations.Bioprovince,object,Eliömaakunta
+municipality,Gathering.Interpretations.Municipality,object,Kunta
+country_source,Gathering.Interpretations.CountrySource,object,
+bio_province_source,Gathering.Interpretations.BioProvinceSource,object,
+municipality_source,Gathering.Interpretations.MunicipalitySource,object,
+state_land,Gathering.StateLand,bool,
+accurate_area,Gathering.AccurateArea,bool,
+higher_geography,Gathering.HigherGeographyVerbatim,object,
+country_verbatim,Gathering.CountryVerbatim,object,Maa
+municipality_verbatim,Gathering.MunicipalityVerbatim,object,
+province_verbatim,Gathering.BioProvinceVerbatim,object,
+region_verbatim,Gathering.ProvinceVerbatim,object,
+locality,Gathering.LocalityVerbatim,object,Sijainti
+event_notes,Gathering.Notes,object,Keruutapahtuman lisätiedot
+event_media_count,Gathering.MediaCount,int,
+document_id,Document.DocumentID,object,Havaintoerän tunniste
+restriction_level,Document.DataSecureLevel,category,Sijainnin karkeistustaso
+restriction_reason,Document.DataSecureReasons,category,Karkeistuksen syy
+is_partial,Document.PartialDocument,bool,
+collection_id,Document.CollectionID,object,
+license,Document.License,category,
+data_source,Document.OriginalDataSource,category,
+collection_quality,Document.Linkings.CollectionQuality,category,Aineiston laatu
+document_issue,Document.Quality.Issue.Issue,category,
+document_issue_source,Document.Quality.Issue.Source,category,
+document_issue_message,Document.Quality.Issue.Message,object,
+source_id,Document.SourceID,object,Lähdejärjestelmä
+site_type,Document.MonitoringSiteType,category,
+site_status,Document.MonitoringSiteStatus,category,
+document_keywords,Document.Keywords,object,
+first_load_date,Document.FirstLoadDate,object,
+load_date,Document.LoadDate,object,
+date_created,Document.Created,object,
+modified_date,Document.Modified,object,
+document_notes,Document.Notes,object,
+document_media_count,Document.MediaCount,int,
+namedplace_id,Document.NamedPlaceID,object,
+geometry,geometry,geometry,geometry
+name_according_to,Unit.NameAccordingTo,category,
+detailed_record_basis,Unit.DetailedRecordBasis,category,
+taxon_checklist,Unit.Linkings.Taxon.Checklist,category,
+collection_name,,object,Aineisto
+formatted_taxon_name,,object,Laji
+sensitive,,bool,Sensitiivinen laji
+primary_habitat,,object,Ensisijainen biotooppi
+n_total_finnish_records,,int,Taksonin havaintojen lukumäärä Suomessa
+coordinates_verbatim,,object,Koordinaatit sanatarkasti
+coordinates_10_center_ykj,,object,YKJ 10km havaintoalueen keskipisteen ruutu
+coordinates_10_ykj,,object,YKJ 10km havaintoalue kokonaan ruudussa
+coordinates_1_center_ykj,,object,YKJ 1km havaintoalueen keskipisteen ruutu
+coordinates_1_ykj,,object,YKJ 1km havaintoalue kokonaan ruudussa

@@ -1,5 +1,4 @@
 from zipfile import ZipFile
-import timeit
 import geopandas as gpd
 import dask.dataframe as dd
 import dask
@@ -34,20 +33,18 @@ def safe_loads(wkt):
         logging.warning(f"Failed to convert WKT: {wkt}")
         return None
 
-def get_column_mapping(lookup_df):
-    """ Get a dictionary of column mappings for use in Dask CSV reader. """
-    column_mapping = lookup_df.set_index('finbif_api_var')['translated_var'].to_dict()
+def get_column_mapping(lookup_df, column_name="translated_var"):
+    """ Get a dictionary of column mappings from the lookup table for use in Dask CSV reader. """
+    column_mapping = lookup_df.set_index(column_name)['translated_var'].to_dict()
     return column_mapping
 
-def get_dtypes(lookup_df):
-    """ Get a dictionary of dtypes for use in Dask CSV reader. """
-    dtype_dict = lookup_df.set_index('finbif_api_var')['dtype'].to_dict()
-    return dtype_dict
+def get_dtypes(lookup_df, column_name="finbif_api_var"):
+    """ Get a dictionary of dtypes from the lookup table for use in Dask CSV reader. """
+    return lookup_df.set_index(column_name)['dtype'].to_dict()
 
 def get_date_columns(lookup_df):
-    """ Get a list of date columns for use in Dask CSV reader. """
-    date_columns = lookup_df[lookup_df['dtype'] == 'datetime64[ns]']['finbif_api_var'].tolist()
-    return date_columns
+    """ Get a list of date columns from the lookup table for use in Dask CSV reader. """
+    return lookup_df[lookup_df['dtype'] == 'datetime64[ns]']['finbif_api_var'].tolist()
 
 def convert_bool(value):
     """ Convert boolean columns to True/False. """
@@ -123,79 +120,83 @@ def save_partition(partition, crs, output_gpkg, geom_type):
     with write_lock:
         write_dataframe(gdf, output_gpkg, driver="GPKG", encoding='utf8', promote_to_multi=True, append=True)
 
-def process_file_in_zip(filename, z, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters):
+def read_tsv_to_ddf(file_path, dtype_dict, date_columns, converters, wkt_column):
     """
-    Process a rows file inside the ZIP archive.
-    Reads the file as a Dask DataFrame, processes geometries, and writes the output to a GeoPackage.
+    Helper to read a TSV file into a Dask DataFrame and process WKT geometries.
     """
-    with z.open(filename) as file:
-        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-            tmp_file.write(file.read())
-            tmp_file_path = tmp_file.name
+    ddf = dd.read_csv(
+        file_path,
+        sep="\t",
+        dtype=dtype_dict,
+        assume_missing=True,
+        quoting=3,
+        on_bad_lines="skip",
+        encoding="utf-8",
+        blocksize="100MB",
+        converters=converters,
+        parse_dates=date_columns,
+    )
 
-        try:
-            file_size = os.path.getsize(tmp_file_path)
-            logging.info(f"File size: {file_size}")
-            
-            # Read the TSV file as a Dask DataFrame
-            ddf = dd.read_csv(
-                tmp_file_path,
-                sep="\t",
-                dtype=dtype_dict,
-                assume_missing=True,
-                quoting=3,
-                on_bad_lines="skip",
-                encoding="utf-8",
-                blocksize="100MB",
-                converters=converters,
-                parse_dates=date_columns,
-            )
+    # Convert WKT strings to Shapely geometries
+    ddf["geometry"] = ddf[wkt_column].map(safe_loads)
+    return ddf
 
-            # Convert WKT strings to Shapely geometries
-            ddf["geometry"] = ddf["Gathering.Conversions.WGS84_WKT"].map(safe_loads)
+def process_tsv_source(file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column, cleanup_temp=False):
+    """
+    Process a TSV source (from temp file or disk).
+    """
+    try:
+        file_size = os.path.getsize(file_path)
+        logging.info(f"File size: {file_size}")
 
-            # Rename and reorder columns based on the lookup table
-            ddf = ddf.rename(columns=column_mapping)
-            existing_columns = [col for col in column_mapping.values() if col in ddf.columns]
-            ddf = ddf[existing_columns]
+        ddf = read_tsv_to_ddf(file_path, dtype_dict, date_columns, converters, wkt_column)
 
-            # Remove the output file if it already exists
-            if os.path.exists(output_gpkg):
-                os.remove(output_gpkg)
+        # Rename and reorder columns based on the lookup table
+        ddf = ddf.rename(columns=column_mapping)
+        existing_columns = [col for col in column_mapping.values() if col in ddf.columns]
+        ddf = ddf[existing_columns]
 
-            # Set the geometry column and process geometries
-            ddf = ddf.set_geometry("geometry")
-            ddf['geometry'] = ddf['geometry'].apply(process_geometry)
+        # Remove the output file if it already exists
+        if os.path.exists(output_gpkg):
+            os.remove(output_gpkg)
 
-            logging.info(f"Writing to GeoPackage {output_gpkg}...")
+        # Set the geometry column and process geometries
+        ddf = ddf.set_geometry("geometry")
+        ddf["geometry"] = ddf["geometry"].apply(process_geometry)
 
-            # Convert to delayed objects to avoid recomputation
-            delayed_partitions = ddf.to_delayed()
-            total_partitions = len(delayed_partitions)
+        logging.info(f"Writing to GeoPackage {output_gpkg}...")
 
-            # Write each partition to the GeoPackage
-            for idx, partition in enumerate(delayed_partitions):
-                logging.info(f"Writing partition {idx + 1} / {total_partitions}...")
-                save_partition(partition, crs, output_gpkg, geom_type)
+        delayed_partitions = ddf.to_delayed()
+        total_partitions = len(delayed_partitions)
 
-        finally:
-            # Clean up the temporary file
-            if os.path.exists(tmp_file_path):
-                os.remove(tmp_file_path)
-                logging.info(f"Deleted temp file: {tmp_file_path}")
+        for idx, partition in enumerate(delayed_partitions):
+            logging.info(f"Writing partition {idx + 1} / {total_partitions}...")
+            save_partition(partition, crs, output_gpkg, geom_type)
+
+    finally:
+        if cleanup_temp and os.path.exists(file_path):
+            os.remove(file_path)
+            logging.info(f"Deleted temp file: {file_path}")
 
 def zip_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
     """
-    Main function to process a ZIP file containing rows TSV files.
-    Reads the TSV file, processes geometries, and writes the output to a GeoPackage.
+    Main function to process a ZIP file or standalone TSV file.
+    Reads the file(s), processes geometries, and writes the output to a GeoPackage.
     """
     logging.info(f"Processing {input_file} -> {output_gpkg}")
 
     # Read the lookup table for column mappings and data types
     lookup_df = pd.read_csv("lookup_table.csv", sep=',', header=0)
-    dtype_dict = get_dtypes(lookup_df)
-    column_mapping = get_column_mapping(lookup_df)
     date_columns = get_date_columns(lookup_df)
+
+    is_zip = input_file.endswith(".zip")
+
+    if is_zip:
+        dtype_dict = get_dtypes(lookup_df, column_name="finbif_api_var")
+        column_mapping = get_column_mapping(lookup_df, column_name="finbif_api_var")
+    else:
+        dtype_dict = get_dtypes(lookup_df, column_name="lite_download_var")
+        column_mapping = get_column_mapping(lookup_df, column_name="lite_download_var")
 
     # Define converters for specific data types
     converters = {col: convert_bool for col, dtype in dtype_dict.items() if dtype == 'bool'}
@@ -203,15 +204,24 @@ def zip_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
 
     num_cores = os.cpu_count()
     logging.info(f"Number of cores: {num_cores}")
-    
-    # Process each file in the ZIP archive
-    with ZipFile(input_file, "r") as z:
-        for filename in z.namelist():
-            if filename.startswith("rows_") and filename.endswith(".tsv"):
-                process_file_in_zip(filename, z, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters)
+
+    if is_zip:
+        with ZipFile(input_file, "r") as z:
+            for filename in z.namelist():
+                if filename.startswith("rows_") and filename.endswith(".tsv"):
+                    with z.open(filename) as file:
+                        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
+                            tmp_file.write(file.read())
+                            tmp_file_path = tmp_file.name
+                    process_tsv_source(tmp_file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column="Gathering.Conversions.WGS84_WKT", cleanup_temp=True)
+
+    else:
+        process_tsv_source(input_file, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column="WGS84 WKT", cleanup_temp=False)
+
 
 if __name__ == "__main__":
     logging.info("Starting process locally...")
 
-    zip_to_gpkg("test_data/HBF.58844.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067")
+    zip_to_gpkg("test_data/HBF.98771.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067")
+    zip_to_gpkg("test_data/laji-data.tsv", f"output.gpkg", geom_type="original", crs="EPSG:3067")
 

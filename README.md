@@ -4,26 +4,85 @@ GeoConverter 2 is a tool for converting geospatial data from TSV files (containe
 
 ## API Endpoints
 
-### `/convert/` (POST)
+### `/convert/{id}/{fmt}/{geo}/{crs}` (POST)
 
 **Description:** Converts a ZIP file containing TSV data into a GeoPackage. Should have the same schema and contant as in downloadable file from FinBIF.
 
-**Parameters:**
-- `file` (UploadFile): The ZIP file containing TSV file that has `rows` in its name.
-- `geom_type` (Query, optional): Geometry type to use (`original`, `points`, or `bbox`). Default is `original`.
-- `crs` (Query, optional): Coordinate Reference System (CRS) for the output. Can be any EPSG code. Default is `EPSG:3067`.
+**Path parameters:**
+- `id`: name for converted file.
+- `fmt`: Output format, only acceptable value `gpkg`.
+- `geo`: Gemetry type, one of `footprint`, `bbox` or `point`.
+- `crs`: Coordinate Reference System (CRS) for output. Either `wgs84` or `euref`.
 
 **Response:**
-- Returns the generated GeoPackage file.
+- Returns an JSON describing the status of conversion and path to download the output from when conversion is ready.
 
-**Example Request:**
+**Example Requests:**
 ```bash
 $ curl 
-    -X 'POST' 'http://127.0.0.1:8000/convert/?geom_type=original&crs=EPSG:3067' 
-    -H "accept: application/json" 
+    -X 'POST' 'http://127.0.0.1:8000/convert/<ID>/gpkg/footprint/wgs84' 
+    -H "Accept: application/json" 
     -H "Content-Type: multipart/form-data" 
     -F "file=@input.zip" 
-    -o output.gpkg
+```
+
+### `/convert/{id}/{fmt}/{geo}/{crs}` (GET)
+
+**Description:** Converts a download by id from files on the server.
+
+**Path parameters:**
+- `id`: ID for file download on the server.
+- `fmt`: Output format, only acceptable value `gpkg`.
+- `geo`: Gemetry type, one of `footprint`, `bbox` or `point`.
+- `crs`: Coordinate Reference System (CRS) for output. Either `wgs84` or `euref`.
+
+**Query parameters:**
+- `personToken`: Optional, users personToken to check access right to the file with sensitive data.
+
+**Response:**
+- Returns an JSON describing the status of conversion and path to download the output from when conversion is ready.
+
+**Example Requests:**
+```bash
+$ curl 
+    -X 'GET' 'http://127.0.0.1:8000/convert/<ID>/gpkg/footprint/wgs84?personToken=<personToken>' 
+    -H "Accept: application/json" 
+```
+
+### `/status/{id}` (GET)
+
+**Description:** Gets the status of a file conversion
+
+**Path parameters:**
+- `id`: ID for file under conversion
+  
+**Response:**
+- Returns an JSON dscribing the status of the given file conversion
+
+**Example Requests:**
+```bash
+$ curl 
+    -X 'GET' 'http://127.0.0.1:8000/status/<ID> 
+    -H "Accept: application/json" 
+```
+
+### `/output/{id}` (GET)
+
+**Description:** Gets the converted file
+
+**Path parameters:**
+- `id`: ID for converted file
+
+**Query parameters:**
+- `personToken`: Optional, users personToken to check access right to the file with sensitive data.
+
+**Response:**
+- Returns a .zip package containing the converted gpkg-file.
+
+**Example Requests:**
+```bash
+$ curl 
+    -X 'GET' 'http://127.0.0.1:8000/output/<ID>?personToken=<personToken> 
 ```
 
 ## Local Installation
@@ -41,7 +100,7 @@ docker run -p 8000:8000 --memory=4g geoconveter_2
 
 3. Make a POST curl to ensure it is working on the localhost:
 ```
-$ curl -X 'POST' 'http://127.0.0.1:8000/convert/?geom_type=ORIGINAL&crs=EPSG:3067' -H "accept: application/json" -H "Content-Type: multipart/form-data" -F "file=@input.zip" -o output.gpkg
+$ curl -X 'POST' 'http://127.0.0.1:8000/convert/output/gpkg/footprint/euref' -H "Accept: application/json" -H "Content-Type: multipart/form-data" -F "file=@input.zip" -o output.gpkg
 ```
 
 or locally without the API, edit the last row of `process_data_dask.py` and run it.

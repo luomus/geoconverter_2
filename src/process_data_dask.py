@@ -141,6 +141,17 @@ def read_tsv_to_ddf(file_path, dtype_dict, date_columns, converters, wkt_column)
     ddf["geometry"] = ddf[wkt_column].map(safe_loads)
     return ddf
 
+def compress_gpkg_to_zip(output_gpkg):
+    """
+    Zip the output GeoPackage file and delete the original one to save space.
+    """
+    zip_file_path = output_gpkg.replace(".gpkg", ".zip")
+    with ZipFile(zip_file_path, 'w') as zipf:
+        zipf.write(output_gpkg, arcname=os.path.basename(output_gpkg))
+    if os.path.exists(output_gpkg):
+        os.remove(output_gpkg)
+    logging.info(f"Zipped and output GeoPackage to: {zip_file_path} and deleted the original {output_gpkg}")
+
 def process_tsv_source(file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column, cleanup_temp=False):
     """
     Process a TSV source (from temp file or disk).
@@ -178,7 +189,9 @@ def process_tsv_source(file_path, output_gpkg, geom_type, crs, dtype_dict, colum
             os.remove(file_path)
             logging.info(f"Deleted temp file: {file_path}")
 
-def zip_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
+        compress_gpkg_to_zip(output_gpkg)
+
+def tsv_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
     """
     Main function to process a ZIP file or standalone TSV file.
     Reads the file(s), processes geometries, and writes the output to a GeoPackage.
@@ -222,6 +235,6 @@ def zip_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
 if __name__ == "__main__":
     logging.info("Starting process locally...")
 
-    zip_to_gpkg("test_data/HBF.98771.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067")
-    zip_to_gpkg("test_data/laji-data.tsv", f"output.gpkg", geom_type="original", crs="EPSG:3067")
+    tsv_to_gpkg("test_data/HBF.98771.zip", f"output_from_zip.gpkg", geom_type="original", crs="EPSG:3067")
+    tsv_to_gpkg("test_data/laji-data.tsv", f"output_from_tsv.gpkg", geom_type="original", crs="EPSG:3067")
 

@@ -5,7 +5,7 @@ import shutil
 import tempfile
 import os
 import time
-from process_data_dask import zip_to_gpkg
+from process_data_dask import tsv_to_gpkg
 from dw_service import is_valid_download_request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -58,7 +58,7 @@ def convert_tsv_to_gpkg(id, zip_path, geo, crs, background_tasks, uploaded_file)
     def process_file():
         """Handles file processing."""
         try:
-            zip_to_gpkg(zip_path, output_gpkg, geom_type=geo, crs=crs)
+            tsv_to_gpkg(zip_path, output_gpkg, geom_type=geo, crs=crs)
             with status_lock:
                 conversion_status[conversion_id] = {
                     "status": "completed",

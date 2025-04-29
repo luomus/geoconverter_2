@@ -95,7 +95,7 @@ $ curl
 
 2. Run in a Docker
 ```docker build -t geoconverter_2 .
-docker run -p 8000:8000 --memory=4g geoconveter_2
+docker run -p 8000:8000 geoconverter_2
 ```
 
 3. Make a POST curl to ensure it is working on the localhost:
@@ -105,7 +105,7 @@ $ curl -X 'POST' 'http://127.0.0.1:8000/convert/output/gpkg/footprint/euref' -H 
 
 or locally without the API, edit the last row of `process_data_dask.py` and run it.
 ```
-zip_to_gpkg("test_data/test.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067")
+tsv_to_gpkg("test_data/test.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067")
 ```
 
 ## How It Works

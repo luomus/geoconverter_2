@@ -152,7 +152,7 @@ def compress_gpkg_to_zip(output_gpkg):
         os.remove(output_gpkg)
     logging.info(f"Zipped and output GeoPackage to: {zip_file_path} and deleted the original {output_gpkg}")
 
-def process_tsv_source(file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column, cleanup_temp=False):
+def process_tsv_source(file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column, cleanup_temp=False, facts=None):
     """
     Process a TSV source (from temp file or disk).
     """
@@ -175,6 +175,11 @@ def process_tsv_source(file_path, output_gpkg, geom_type, crs, dtype_dict, colum
         ddf = ddf.set_geometry("geometry")
         ddf["geometry"] = ddf["geometry"].apply(process_geometry)
 
+        # join facts to the dask dataframe using columns "Parent" and "Havainnon tunniste"
+        logging.info("Joining facts to the Dask DataFrame...")
+        if facts is not None:
+            ddf = ddf.merge(facts, how="left", left_on="record_id", right_on="Parent").drop(columns=["Parent"])
+
         logging.info(f"Writing to GeoPackage {output_gpkg}...")
 
         delayed_partitions = ddf.to_delayed()
@@ -190,6 +195,45 @@ def process_tsv_source(file_path, output_gpkg, geom_type, crs, dtype_dict, colum
             logging.info(f"Deleted temp file: {file_path}")
 
         compress_gpkg_to_zip(output_gpkg)
+
+def extract_and_process_facts(fact_file, z, columns):
+    with z.open(fact_file) as file:
+        facts = pd.read_csv(file, sep="\t", header=0)
+
+    facts = facts[facts["Fact"].isin(columns)]
+    facts = facts.drop(columns=["IntValue", "DecimalValue"])
+
+    # Convert Fact values to column names and drop the original Fact column. Keep Value column as values.
+    facts = facts.pivot_table(index="Parent", columns="Fact", values="Value", aggfunc="first").reset_index()
+    return facts
+
+def get_facts(input_path):
+    """ Get unit and gathering facts from zipped unit_facts_HBF.id.tsv and gathering_facts_HBF.id.tsv files. """
+    with ZipFile(input_path, "r") as z:
+        file_name = os.path.split(input_path)[1].strip(".zip")
+
+        input_unit_fact_file = os.path.join(f"unit_facts_{file_name}.tsv")
+        input_gathering_fact_file = os.path.join(f"gathering_facts_{file_name}.tsv")
+        input_document_fact_file = os.path.join(f"document_facts_{file_name}.tsv")
+
+        unit_facts = extract_and_process_facts(input_unit_fact_file, z, ["Museo, johon lajista kerätty näyte on talletettu", "Havainnon laatu", "Havainnon määrän yksikkö"])
+        gathering_facts = extract_and_process_facts(input_gathering_fact_file, z, ["Vesistöalue", "Sijainnin tarkkuusluokka", "Pesintätulos"])
+        document_facts = extract_and_process_facts(input_document_fact_file, z, ["Seurattava laji"])
+
+    # merge all facts into one dataframe
+    facts = pd.merge(unit_facts, gathering_facts, how="left", on="Parent").merge(document_facts, how="left", on="Parent")
+
+    facts = facts.rename(columns={
+        "Vesistöalue": "event_fact_Vesistöalue",
+        "Sijainnin tarkkuusluokka": "event_fact_Sijainnin_tarkkuusluokka",
+        "Pesintätulos": "event_fact_Pesintätulos",
+        "Museo, johon lajista kerätty näyte on talletettu": "record_fact_Museo_johon_lajista_kerätty_näyte_on_talletettu",
+        "Havainnon laatu": "record_fact_Havainnon_laatu",
+        "Havainnon määrän yksikkö": "record_fact_Havainnon_määrän_yksikkö",
+        "Seurattava laji": "document_fact_Seurattava_laji"
+    })
+
+    return facts
 
 def tsv_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
     """
@@ -207,6 +251,7 @@ def tsv_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
     if is_zip:
         dtype_dict = get_dtypes(lookup_df, column_name="finbif_api_var")
         column_mapping = get_column_mapping(lookup_df, column_name="finbif_api_var")
+        facts = get_facts(input_file)
     else:
         dtype_dict = get_dtypes(lookup_df, column_name="lite_download_var")
         column_mapping = get_column_mapping(lookup_df, column_name="lite_download_var")
@@ -226,10 +271,10 @@ def tsv_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
                         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
                             tmp_file.write(file.read())
                             tmp_file_path = tmp_file.name
-                    process_tsv_source(tmp_file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column="Gathering.Conversions.WGS84_WKT", cleanup_temp=True)
+                    process_tsv_source(tmp_file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column="Gathering.Conversions.WGS84_WKT", cleanup_temp=True, facts=facts)
 
     else:
-        process_tsv_source(input_file, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column="WGS84 WKT", cleanup_temp=False)
+        process_tsv_source(input_file, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column="WGS84 WKT", cleanup_temp=False, facts=None)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@ from zipfile import ZipFile
 import geopandas as gpd
 import dask.dataframe as dd
 import dask
+from dask import config as dask_config
 import warnings
 import tempfile
 from shapely.wkt import loads
@@ -17,7 +18,7 @@ import logging
 warnings.filterwarnings("ignore")
 
 # Configure Dask to use threads for parallelism and set the number of workers to the number of CPU cores
-dask.config.set(scheduler="threads", num_workers=os.cpu_count())
+dask_config.set(scheduler="threads", num_workers=os.cpu_count())
 
 # Lock to ensure thread-safe writes to the output file
 write_lock = Lock()
@@ -33,7 +34,7 @@ def safe_loads(wkt):
         logging.warning(f"Failed to convert WKT: {wkt}")
         return None
 
-def get_column_mapping(lookup_df, column_name="translated_var"):
+def get_column_mapping(lookup_df, column_name="fibif_api_var"):
     """ Get a dictionary of column mappings from the lookup table for use in Dask CSV reader. """
     column_mapping = lookup_df.set_index(column_name)['translated_var'].to_dict()
     return column_mapping
@@ -41,10 +42,6 @@ def get_column_mapping(lookup_df, column_name="translated_var"):
 def get_dtypes(lookup_df, column_name="finbif_api_var"):
     """ Get a dictionary of dtypes from the lookup table for use in Dask CSV reader. """
     return lookup_df.set_index(column_name)['dtype'].to_dict()
-
-def get_date_columns(lookup_df):
-    """ Get a list of date columns from the lookup table for use in Dask CSV reader. """
-    return lookup_df[lookup_df['dtype'] == 'datetime64[ns]']['finbif_api_var'].tolist()
 
 def convert_bool(value):
     """ Convert boolean columns to True/False. """
@@ -120,7 +117,7 @@ def save_partition(partition, crs, output_gpkg, geom_type):
     with write_lock:
         write_dataframe(gdf, output_gpkg, driver="GPKG", encoding='utf8', promote_to_multi=True, append=True)
 
-def read_tsv_to_ddf(file_path, dtype_dict, date_columns, converters, wkt_column):
+def read_tsv_to_ddf(file_path, dtype_dict, converters, wkt_column):
     """
     Helper to read a TSV file into a Dask DataFrame and process WKT geometries.
     """
@@ -134,7 +131,6 @@ def read_tsv_to_ddf(file_path, dtype_dict, date_columns, converters, wkt_column)
         encoding="utf-8",
         blocksize="100MB",
         converters=converters,
-        parse_dates=date_columns,
     )
 
     # Convert WKT strings to Shapely geometries
@@ -152,15 +148,12 @@ def compress_gpkg_to_zip(output_gpkg):
         os.remove(output_gpkg)
     logging.info(f"Zipped and output GeoPackage to: {zip_file_path} and deleted the original {output_gpkg}")
 
-def process_tsv_source(file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column, cleanup_temp=False, facts=None):
+def process_tsv_source(file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, converters, wkt_column, cleanup_temp=False, facts=None):
     """
     Process a TSV source (from temp file or disk).
     """
     try:
-        file_size = os.path.getsize(file_path)
-        logging.info(f"File size: {file_size}")
-
-        ddf = read_tsv_to_ddf(file_path, dtype_dict, date_columns, converters, wkt_column)
+        ddf = read_tsv_to_ddf(file_path, dtype_dict, converters, wkt_column)
 
         # Rename and reorder columns based on the lookup table
         ddf = ddf.rename(columns=column_mapping)
@@ -243,8 +236,8 @@ def tsv_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
     logging.info(f"Processing {input_file} -> {output_gpkg}")
 
     # Read the lookup table for column mappings and data types
-    lookup_df = pd.read_csv("lookup_table.csv", sep=',', header=0)
-    date_columns = get_date_columns(lookup_df)
+    lookup_path = os.path.join(os.path.dirname(__file__), "lookup_table.csv")
+    lookup_df = pd.read_csv(lookup_path, sep=',', header=0)
 
     is_zip = input_file.endswith(".zip")
 
@@ -255,13 +248,11 @@ def tsv_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
     else:
         dtype_dict = get_dtypes(lookup_df, column_name="lite_download_var")
         column_mapping = get_column_mapping(lookup_df, column_name="lite_download_var")
+        facts = None
 
     # Define converters for specific data types
     converters = {col: convert_bool for col, dtype in dtype_dict.items() if dtype == 'bool'}
     converters.update({col: convert_int_with_na for col, dtype in dtype_dict.items() if dtype == 'int'})
-
-    num_cores = os.cpu_count()
-    logging.info(f"Number of cores: {num_cores}")
 
     if is_zip:
         with ZipFile(input_file, "r") as z:
@@ -271,10 +262,10 @@ def tsv_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
                         with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
                             tmp_file.write(file.read())
                             tmp_file_path = tmp_file.name
-                    process_tsv_source(tmp_file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column="Gathering.Conversions.WGS84_WKT", cleanup_temp=True, facts=facts)
+                    process_tsv_source(tmp_file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, converters, wkt_column="Gathering.Conversions.WGS84_WKT", cleanup_temp=True, facts=facts)
 
     else:
-        process_tsv_source(input_file, output_gpkg, geom_type, crs, dtype_dict, column_mapping, date_columns, converters, wkt_column="WGS84 WKT", cleanup_temp=False, facts=None)
+        process_tsv_source(input_file, output_gpkg, geom_type, crs, dtype_dict, column_mapping, converters, wkt_column="WGS84 WKT", cleanup_temp=False, facts=facts)
 
 
 if __name__ == "__main__":

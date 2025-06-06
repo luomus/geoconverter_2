@@ -4,6 +4,23 @@ GeoConverter 2 is a tool for converting geospatial data from TSV files (containe
 
 ## API Endpoints
 
+### `/convert-to-table` (POST)
+
+**Description:** Converts GIS formats (`.geojson`, `.json`, `.gpkg`, `.kml`, `.gml`) or compressed GIS files (e.g. `.shp` inside a `.zip`) into a CSV file. The filename is inferred from the uploaded file.
+
+**Response:**
+- Returns converted CSV file, where the geometry is converted to WKT format. 
+
+**Example Requests:**
+```bash
+$ curl 
+    -X 'POST' 'http://127.0.0.1:8000/convert-to-table'
+    -H "Accept: text/csv"
+    -H "Content-Type: multipart/form-data"
+    -F "file=@geopackage_in_zip.zip"
+    -o "output.csv"
+```
+
 ### `/convert/{id}/{fmt}/{geo}/{crs}` (POST)
 
 **Description:** Converts a ZIP file containing TSV data into a GeoPackage. Should have the same schema and contant as in downloadable file from FinBIF.
@@ -103,7 +120,7 @@ docker run -p 8000:8000 geoconverter_2
 $ curl -X 'POST' 'http://127.0.0.1:8000/convert/output/gpkg/footprint/euref' -H "Accept: application/json" -H "Content-Type: multipart/form-data" -F "file=@input.zip" -o output.gpkg
 ```
 
-or locally without the API, edit the last row of `process_data_dask.py` and run it.
+or locally without the API, edit the last row of `table_to_gpkg.py` and run it.
 ```
 tsv_to_gpkg("test_data/test.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067")
 ```

@@ -2,6 +2,7 @@ from zipfile import ZipFile
 import geopandas as gpd
 import dask.dataframe as dd
 import dask
+from fiona import listlayers
 from dask import config as dask_config
 import warnings
 import tempfile
@@ -92,7 +93,7 @@ def process_geometry(geometry):
         polygons = [geom.buffer(buffer_distance) if isinstance(geom, (Point, LineString, MultiPoint, MultiLineString)) 
                     else geom for geom in geometry.geoms]
 
-        dissolved_geometry = gpd.GeoSeries(polygons).unary_union 
+        dissolved_geometry = gpd.GeoSeries(polygons).unary_union
             
         if isinstance(dissolved_geometry, Polygon):
             return MultiPolygon([dissolved_geometry])
@@ -273,4 +274,3 @@ if __name__ == "__main__":
 
     tsv_to_gpkg("test_data/HBF.98771.zip", f"output_from_zip.gpkg", geom_type="original", crs="EPSG:3067")
     tsv_to_gpkg("test_data/laji-data.tsv", f"output_from_tsv.gpkg", geom_type="original", crs="EPSG:3067")
-

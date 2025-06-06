@@ -5,13 +5,14 @@ import shutil
 import tempfile
 import os
 import time
-from process_data_dask import tsv_to_gpkg
+from table_to_gpkg import tsv_to_gpkg
 from dw_service import is_valid_download_request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 from threading import Lock
 from typing import Literal
 import settings
+from gis_to_table import gis_to_table
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -97,14 +98,57 @@ def convert_tsv_to_gpkg(id, zip_path, geo, crs, background_tasks, uploaded_file)
             "download_url": f"/output/{conversion_id}"
         }
 
+@app.post("/convert-to-table")
+async def convert_gis_to_table_api(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...)
+):
+    """
+    Convert a GIS file to a tabular CSV using the gis_to_table() function.
+    Returns the saved CSV file with geometry as WKT.
+    """
+    logging.info(f"Received GIS file: {file.filename}")
+
+    # Validate file extension
+    SUPPORTED_EXTENSIONS = {'.shp', '.geojson', '.json', '.gpkg', '.kml', '.gml', '.zip'}
+    basename, suffix = os.path.splitext(file.filename)
+    if suffix not in SUPPORTED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}")
+
+
+    try:
+        # Save uploaded GIS file to temp location
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_path = tmp.name
+
+        # Perform conversion (this saves CSV alongside the GIS file)
+        csv_path = gis_to_table(tmp_path)
+
+        if not os.path.exists(csv_path):
+            raise RuntimeError("CSV output file not found after conversion.")
+
+        # Schedule cleanup
+        if background_tasks:
+            background_tasks.add_task(os.remove, tmp_path)
+            background_tasks.add_task(os.remove, csv_path)
+
+            
+        logging.info(f"Returning CSV file: {csv_path}")
+        return FileResponse(csv_path, filename=basename, media_type="text/csv")
+
+    except Exception as e:
+        logging.error(f"GIS-to-table conversion failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
 @app.get("/convert/{id}/{fmt}/{geo}/{crs}")
 async def convert_with_id(
   id: str,
   fmt: Literal["gpkg"],
   geo: Literal["bbox", "point", "footprint"],
   crs: Literal["euref","wgs84"],
-  personToken: str | None = None,
-  background_tasks: BackgroundTasks = None
+  background_tasks: BackgroundTasks,
+  personToken: str | None = None
 ):
     """API enpoint to start converting file stored in dw"""
     if not is_valid_download_request(id, personToken):
@@ -119,8 +163,8 @@ async def convert_with_file(
     fmt: Literal["gpkg"],
     geo: Literal["bbox", "point", "footprint"],
     crs: Literal["euref","wgs84"],
-    file: UploadFile = File(...),
-    background_tasks: BackgroundTasks = None
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...)
 ):
     """API endpoint to receive ZIP TSV file and return a GeoPackage."""
 

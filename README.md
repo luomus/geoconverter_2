@@ -1,6 +1,17 @@
 # GeoConverter 2
 
-GeoConverter 2 is a tool for converting geospatial data from TSV files (contained in ZIP archives) into GeoPackage format. It is tailored specifically for TSV files from FinBIF data downloads.
+GeoConverter 2 is a comprehensive tool for converting geospatial data between different formats:
+- **TSV to GeoPackage**: Converts TSV files (contained in ZIP archives) into GeoPackage format, specifically tailored for FinBIF data downloads
+- **GIS to Table**: Converts various GIS formats (GeoJSON, GeoPackage, KML, GML, Shapefiles) into CSV format with WKT geometries
+
+## Features
+
+- Support for multiple input formats: ZIP archives with TSV data, GeoJSON, GeoPackage, KML, GML, Shapefiles
+- Multiple geometry processing options: original footprints, centroids (points), or bounding boxes
+- Coordinate system transformation support (WGS84, EUREF-FIN)
+- Asynchronous processing for large files
+- Docker containerization for easy deployment
+- RESTful API with comprehensive status tracking
 
 ## API Endpoints
 
@@ -11,59 +22,58 @@ GeoConverter 2 is a tool for converting geospatial data from TSV files (containe
 **Response:**
 - Returns converted CSV file, where the geometry is converted to WKT format. 
 
-**Example Requests:**
+**Example Request:**
 ```bash
-$ curl 
-    -X 'POST' 'http://127.0.0.1:8000/convert-to-table'
-    -H "Accept: text/csv"
-    -H "Content-Type: multipart/form-data"
-    -F "file=@geopackage_in_zip.zip"
+curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
+    -H "Accept: text/csv" \
+    -H "Content-Type: multipart/form-data" \
+    -F "file=@geopackage_in_zip.zip" \
     -o "output.csv"
 ```
 
+*Note: The `Accept` header specifies the expected response format, while `Content-Type` is automatically set by curl when using `-F` for file uploads but is included here for clarity.*
+
 ### `/convert/{id}/{fmt}/{geo}/{crs}` (POST)
 
-**Description:** Converts a ZIP file containing TSV data into a GeoPackage. Should have the same schema and contant as in downloadable file from FinBIF.
+**Description:** Converts a ZIP file containing TSV data into a GeoPackage. Should have the same schema and content as downloadable files from FinBIF.
 
 **Path parameters:**
-- `id`: name for converted file.
-- `fmt`: Output format, only acceptable value `gpkg`.
-- `geo`: Gemetry type, one of `footprint`, `bbox` or `point`.
-- `crs`: Coordinate Reference System (CRS) for output. Either `wgs84` or `euref`.
+- `id`: Name for the converted file
+- `fmt`: Output format (currently only `gpkg` is supported)
+- `geo`: Geometry type - one of `footprint`, `bbox`, or `point`
+- `crs`: Coordinate Reference System (CRS) for output - either `wgs84` or `euref`
 
 **Response:**
-- Returns an JSON describing the status of conversion and path to download the output from when conversion is ready.
+- Returns a JSON response describing the status of conversion and path to download the output when conversion is ready
 
-**Example Requests:**
+**Example Request:**
 ```bash
-$ curl 
-    -X 'POST' 'http://127.0.0.1:8000/convert/<ID>/gpkg/footprint/wgs84' 
-    -H "Accept: application/json" 
-    -H "Content-Type: multipart/form-data" 
-    -F "file=@input.zip" 
+curl -X 'POST' 'http://127.0.0.1:8000/convert/myfile/gpkg/footprint/wgs84' \
+    -H "Accept: application/json" \
+    -H "Content-Type: multipart/form-data" \
+    -F "file=@input.zip"
 ```
 
 ### `/convert/{id}/{fmt}/{geo}/{crs}` (GET)
 
-**Description:** Converts a download by id from files on the server.
+**Description:** Downloads and converts a file by ID from files stored on the FinBIF data warehouse server
 
 **Path parameters:**
-- `id`: ID for file download on the server.
-- `fmt`: Output format, only acceptable value `gpkg`.
-- `geo`: Gemetry type, one of `footprint`, `bbox` or `point`.
-- `crs`: Coordinate Reference System (CRS) for output. Either `wgs84` or `euref`.
+- `id`: ID for file download on the FinBIF server
+- `fmt`: Output format (currently only `gpkg` is supported)
+- `geo`: Geometry type - one of `footprint`, `bbox`, or `point`
+- `crs`: Coordinate Reference System (CRS) for output - either `wgs84` or `euref`
 
 **Query parameters:**
-- `personToken`: Optional, users personToken to check access right to the file with sensitive data.
+- `personToken`: User's personToken to check access rights for files with sensitive data
 
 **Response:**
-- Returns an JSON describing the status of conversion and path to download the output from when conversion is ready.
+- Returns a JSON response describing the status of conversion and path to download the output when conversion is ready
 
-**Example Requests:**
+**Example Request:**
 ```bash
-$ curl 
-    -X 'GET' 'http://127.0.0.1:8000/convert/<ID>/gpkg/footprint/wgs84?personToken=<personToken>' 
-    -H "Accept: application/json" 
+curl -X 'GET' 'http://127.0.0.1:8000/convert/HBF.12345/gpkg/footprint/wgs84?personToken=your_token_here' \
+    -H "Accept: application/json"
 ```
 
 ### `/status/{id}` (GET)
@@ -74,67 +84,94 @@ $ curl
 - `id`: ID for file under conversion
   
 **Response:**
-- Returns an JSON dscribing the status of the given file conversion
+- Returns a JSON response describing the status of the given file conversion
 
-**Example Requests:**
+**Example Request:**
 ```bash
-$ curl 
-    -X 'GET' 'http://127.0.0.1:8000/status/<ID> 
-    -H "Accept: application/json" 
+curl -X 'GET' 'http://127.0.0.1:8000/status/HBF.12345' \
+    -H "Accept: application/json"
 ```
 
 ### `/output/{id}` (GET)
 
-**Description:** Gets the converted file
+**Description:** Downloads the converted file
 
 **Path parameters:**
 - `id`: ID for converted file
 
 **Query parameters:**
-- `personToken`: Optional, users personToken to check access right to the file with sensitive data.
+- `personToken`: Optional, user's personToken to check access right for the file with sensitive data.
 
 **Response:**
-- Returns a .zip package containing the converted gpkg-file.
+- Returns a ZIP package containing the converted GPKG file
 
-**Example Requests:**
+**Example Request:**
 ```bash
-$ curl 
-    -X 'GET' 'http://127.0.0.1:8000/output/<ID>?personToken=<personToken> 
+curl -X 'GET' 'http://127.0.0.1:8000/output/myfile?personToken=your_token_here' \
+    -o converted_output.zip
 ```
 
-## Local Installation
+## Installation and Usage
+
+### Docker Deployment (Recommended)
 
 1. Clone the repository:
- ```bash
- git clone https://github.com/your-repo/geoconverter_2.git
- cd geoconverter_2
- ```
-
-2. Run in a Docker
-```docker build -t geoconverter_2 .
-docker run -p 8000:8000 geoconverter_2
+```bash
+git clone https://github.com/luomus/geoconverter_2.git
+cd geoconverter_2
 ```
 
-3. Make a POST curl to ensure it is working on the localhost:
-```
-$ curl -X 'POST' 'http://127.0.0.1:8000/convert/output/gpkg/footprint/euref' -H "Accept: application/json" -H "Content-Type: multipart/form-data" -F "file=@input.zip" -o output.gpkg
-```
+2. Build and run with Docker:
+   ```bash
+   docker build -t geoconverter_2 .
+   docker run -p 8000:8000 geoconverter_2
+   ```
 
-or locally without the API, edit the last row of `table_to_gpkg.py` and run it.
-```
-tsv_to_gpkg("test_data/test.zip", f"output.gpkg", geom_type="original", crs="EPSG:3067")
-```
+3. Test the API:
+   ```bash
+   curl -X 'POST' 'http://127.0.0.1:8000/convert/myfile/gpkg/footprint/euref' \
+       -H "Accept: application/json" \
+       -H "Content-Type: multipart/form-data" \
+       -F "file=@test_data/HBF.12912.zip"
+   ```
 
 ## How It Works
 
-1. **Input Handling:** The API accepts a ZIP file containing TSV files.
-2. **Data Processing:** 
-   - Reads TSV files using Dask for parallel processing.
-   - Converts geometries from WKT format to Shapely objects.
-   - Supports geometry transformations (centroids, bounding boxes) when required.
-   - Handles column mapping and type conversions based on a lookup table (`lookup_table.csv`).
-3. **Output:** Writes the processed data to a GeoPackage file using Pyogrio.
+### TSV to GeoPackage Conversion
+
+1. **Input Handling**: The API accepts ZIP files containing TSV data from FinBIF downloads
+2. **Data Processing**: 
+   - Reads TSV files using Dask for efficient parallel processing of large datasets
+   - Converts WKT (Well-Known Text) geometries to Shapely objects
+   - Supports geometry transformations:
+     - **Original**: Preserves original footprint geometries
+     - **Point**: Converts to centroid points
+     - **Bbox**: Converts to bounding box polygons
+   - Handles coordinate system transformations (WGS84 ↔ EUREF-FIN)
+   - Processes data in partitions for memory efficiency
+3. **Output**: Writes processed data to GeoPackage format using PyOGRIO
+
+### GIS to Table Conversion
+
+1. **Input Handling**: Accepts various GIS formats (GeoJSON, GeoPackage, KML, GML, Shapefiles in ZIP)
+2. **Processing**: Uses GeoPandas to read and process spatial data
+3. **Output**: Converts geometries to WKT format and exports as CSV
+
+## Architecture
+
+- **FastAPI**: RESTful API framework with async support
+- **Dask**: Parallel computing for processing large datasets
+- **GeoPandas/Shapely**: Geospatial data manipulation
+- **PyOGRIO**: High-performance I/O for geospatial formats
+- **Docker**: Containerized deployment
 
 ## Requirements
 
-See the `requirements.txt` file.
+See `requirements.txt` for complete dependency list. Key dependencies include:
+- FastAPI 0.115+
+- Dask 2025.2+ and Dask-GeoPandas 0.5+
+- GeoPandas 1.1+
+- Shapely 2.1+
+- PyOGRIO 0.7+
+- Pandas 2.3+
+- Pydantic Settings 2.9+

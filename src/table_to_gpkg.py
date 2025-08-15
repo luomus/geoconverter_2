@@ -1,276 +1,334 @@
-from zipfile import ZipFile
-import geopandas as gpd
-import dask.dataframe as dd
-import dask
-from fiona import listlayers
-from dask import config as dask_config
-import warnings
-import tempfile
-from shapely.wkt import loads
-from shapely.errors import ShapelyError
-from pyogrio import write_dataframe
-import pandas as pd
-import os
-import dask_geopandas
-from shapely.geometry import GeometryCollection, Point, LineString, MultiPoint, MultiLineString, Polygon, MultiPolygon
-from threading import Lock
 import logging
+import os
+import tempfile
+import zipfile
+from threading import Lock
+from time import time
+from typing import Dict, Union
+from zipfile import ZipFile
+import dask
+import dask.dataframe as dd
+import dask_geopandas
+import geopandas as gpd
+import pandas as pd
+from dask import config as dask_config
+from fastapi.responses import FileResponse
+from pyogrio import write_dataframe
+from helpers import *
+import settings
 
+
+import warnings
 warnings.filterwarnings("ignore")
+pd.options.mode.use_inf_as_na = True
 
-# Configure Dask to use threads for parallelism and set the number of workers to the number of CPU cores
 dask_config.set(scheduler="threads", num_workers=os.cpu_count())
 
-# Lock to ensure thread-safe writes to the output file
+app_settings = settings.Settings()
+log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
+
+logging.basicConfig(
+    level=log_level, 
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+# Thread-safe locks
 write_lock = Lock()
+status_lock = Lock()
 
-# Configure logging for better debugging and monitoring
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+CRS_MAPPING = {
+    "euref": "EPSG:3067",
+    "wgs84": "EPSG:4326"
+}
 
-def safe_loads(wkt):
-    """ Safely convert WKT string to Shapely geometry. """
-    try:
-        return loads(wkt)
-    except ShapelyError:
-        logging.warning(f"Failed to convert WKT: {wkt}")
-        return None
+GEOMETRY_TYPE_MAPPING = {
+    "point": "points",
+    "bbox": "bbox",
+    "footprint": "original"
+}
 
-def get_column_mapping(lookup_df, column_name="fibif_api_var"):
-    """ Get a dictionary of column mappings from the lookup table for use in Dask CSV reader. """
-    column_mapping = lookup_df.set_index(column_name)['translated_var'].to_dict()
-    return column_mapping
+conversion_status: Dict = {}
 
-def get_dtypes(lookup_df, column_name="finbif_api_var"):
-    """ Get a dictionary of dtypes from the lookup table for use in Dask CSV reader. """
-    return lookup_df.set_index(column_name)['dtype'].to_dict()
+LARGE_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB
+CHUNK_SIZE = "100MB"
 
-def convert_bool(value):
-    """ Convert boolean columns to True/False. """
-    if value.lower() in ['true', '1']:
-        return True
-    elif value.lower() in ['false', '0']:
-        return False
-    else:
-        return None
-
-def convert_int_with_na(value):
-    """ Convert integer columns with NA values to float. """
-    try:
-        return float(value)
-    except ValueError:
-        return None
-
-def process_geometry(geometry):
+def handle_conversion_request(conversion_id: str, zip_path: str, geo_type: str, crs: str, background_tasks, uploaded_file: bool) -> Union[FileResponse, dict]:
     """
-    Process a Shapely GeometryCollection to convert it into a MultiPolygon or other geometry types.
-    Buffers points and lines if necessary and dissolves the result into a single geometry.
-    """
-    buffer_distance = 0.00001  # Approximately 0.5 meters
-
-    if isinstance(geometry, GeometryCollection):
-        geom_types = {type(geom) for geom in geometry.geoms}
-        geometries = list(geometry.geoms)
-
-        # Handle cases where the GeometryCollection contains only one geometry
-        if len(geometries) == 1:
-            return geometries[0]
-
-        # Convert homogeneous collections to MultiX types
-        if geom_types == {LineString}:
-            return MultiLineString(list(geometry.geoms))
-        elif geom_types == {Point}:
-            return MultiPoint(list(geometry.geoms))
-        elif geom_types == {Polygon}:
-            return MultiPolygon(list(geometry.geoms))
-        elif geom_types == {MultiLineString}:
-            return MultiLineString([g for geom in geometry.geoms for g in geom.geoms])
-        elif geom_types == {MultiPoint}:
-            return MultiPoint([g for geom in geometry.geoms for g in geom.geoms])
-        elif geom_types == {MultiPolygon}:
-            return MultiPolygon([g for geom in geometry.geoms for g in geom.geoms])
-
-        # Buffer points and lines, then dissolve into a MultiPolygon
-        polygons = [geom.buffer(buffer_distance) if isinstance(geom, (Point, LineString, MultiPoint, MultiLineString)) 
-                    else geom for geom in geometry.geoms]
-
-        dissolved_geometry = gpd.GeoSeries(polygons).unary_union
-            
-        if isinstance(dissolved_geometry, Polygon):
-            return MultiPolygon([dissolved_geometry])
+    Handle API conversion request - manages status tracking and task scheduling.
+    
+    Args:
+        conversion_id: Unique identifier (file name) for this conversion. E.g. HBF.12345
+        zip_path: Path to the input ZIP file
+        geo_type: Type of geometry processing ('point', 'bbox', 'footprint')
+        crs: Coordinate reference system ('euref', 'wgs84')
+        background_tasks: FastAPI background tasks manager
+        uploaded_file: Whether this is an uploaded file
         
-        return dissolved_geometry        
-    return geometry
-
-def save_partition(partition, crs, output_gpkg, geom_type):
+    Returns:
+        FileResponse for small files, status dict for large files
     """
-    Process a single partition and write it to a GeoPackage file.
-    Handles geometry transformations like centroid or envelope based on the geom_type.
+    mapped_geo_type = GEOMETRY_TYPE_MAPPING[geo_type]
+    mapped_crs = CRS_MAPPING[crs]
+    
+    file_size = os.path.getsize(zip_path)
+
+    logging.info(f"Starting conversion for ID: {conversion_id}, zip_path: {zip_path}, file size: {file_size}")
+
+    update_conversion_status(
+        conversion_id,
+        "processing",
+        uploaded_file=uploaded_file
+    )
+    
+    if file_size < LARGE_FILE_THRESHOLD:
+        # Small files: process immediately and clean up after
+        process_file_conversion(zip_path, mapped_geo_type, mapped_crs, conversion_id)
+                
+        return {
+            "id": conversion_id,
+            "status": "completed",
+            "message": "Small file processed immediately. Ready for download.",
+            "status_url": f"/status/{conversion_id}",
+            "download_url": f"/output/{conversion_id}",
+            "file_size_mb": round(file_size / (1024*1024), 1)
+        }
+        
+    else:
+        # Large files: process in background (background task handles cleanup)
+        background_tasks.add_task(process_file_conversion, zip_path, mapped_geo_type, mapped_crs, conversion_id)
+
+        return {
+            "id": conversion_id,
+            "status": "processing",
+            "message": f"Large file detected ({file_size / (1024*1024):.1f}MB). Processing in background...",
+            "status_url": f"/status/{conversion_id}",
+            "download_url": f"/output/{conversion_id}",
+            "file_size_mb": round(file_size / (1024*1024), 1)
+        }
+
+def create_output_zip(zip_path: str, output_gpkg: str, conversion_id: str, cleanup_source: bool = False) -> str:
     """
-    gdf = gpd.GeoDataFrame(partition.compute(), geometry="geometry", crs="EPSG:4326").to_crs(crs)
+    Create a ZIP file containing the GPKG and all other files from input ZIP.
+    """
+    logging.debug(f"Creating output ZIP: {zip_path} with GPKG: {output_gpkg}")
+    zip_path_out = conversion_id + '.zip'
 
-    # Apply geometry transformations if specified
-    if geom_type == "points":
-        gdf.geometry = gdf.geometry.centroid
-    elif geom_type == "bbox":
-        gdf.geometry = gdf.geometry.envelope
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # Extract all files from the original zip
+        with ZipFile(zip_path, "r") as zip_in:
+            logging.debug(f"Extracting files from {zip_path} to {temp_dir}")
+            zip_in.extractall(temp_dir)
+            logging.debug(f"Extracted {len(zip_in.namelist())} files from {zip_path} to {temp_dir}")
 
-    # Write the partition to the GeoPackage file
+        occurrences_path = os.path.join(temp_dir, 'occurrences.txt')
+        if os.path.exists(occurrences_path):
+            os.remove(occurrences_path)
+            logging.debug(f"Removed occurrences.txt from {temp_dir}")
+
+        gpkg_dest = os.path.join(temp_dir, output_gpkg)
+        if os.path.exists(output_gpkg):
+            os.replace(output_gpkg, gpkg_dest)
+            logging.debug(f"Replaced {gpkg_dest} with {output_gpkg}")
+        else:
+            logging.warning(f"GPKG file not found: {output_gpkg}")
+
+        # Recreate the zip with the same folder structure and name
+        with ZipFile(zip_path_out, "w", zipfile.ZIP_DEFLATED) as zip_out:
+            for root, _, files in os.walk(temp_dir):
+                for file in files:
+                    logging.debug(f"Adding {file} to zip {zip_path_out}")
+                    abs_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(abs_path, temp_dir)
+                    zip_out.write(abs_path, rel_path)
+                    logging.debug(f"Added {rel_path} to zip {zip_path_out}")
+
+    if cleanup_source:
+        cleanup_files(output_gpkg)
+        cleanup_files(temp_dir)
+
+    return zip_path_out
+
+def update_conversion_status(conversion_id: str, status: str, **kwargs) -> None:
+    """Thread-safe update of conversion status."""
+    with status_lock:
+        conversion_status[conversion_id] = {
+            "status": status,
+            "timestamp": time(),
+            **kwargs
+        }
+
+def cleanup_files(*file_paths: str) -> None:
+    """Safely remove multiple files."""
+    for file_path in file_paths:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logging.debug(f"Cleaned up file: {file_path}")
+            except OSError as e:
+                logging.warning(f"Failed to clean up {file_path}: {e}")
+
+def process_file_conversion(zip_path: str, geo_type: str, crs: str, conversion_id: str) -> None:
+    output_gpkg = f'{conversion_id}.gpkg'
+
+    try:
+        logging.debug(f"Processing {zip_path} -> {output_gpkg}")
+
+        if zip_path.endswith(".zip"):
+            occurrence_file = f"occurrences.txt"
+            logging.debug(f"Reading occurrence file: {occurrence_file}...")
+
+            with ZipFile(zip_path, "r") as zip_file:
+                with zip_file.open(occurrence_file) as source_file:
+                    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                        temp_file.write(source_file.read())
+                        temp_file_path = temp_file.name
+
+            process_tsv_data(
+                conversion_id,
+                zip_path,
+                temp_file_path, 
+                output_gpkg, 
+                geo_type, 
+                crs, 
+                wkt_column="footprintWKT",
+                cleanup_temp=True, 
+                compress_output=True
+            )
+        else:
+            # Process standalone TSV file
+            pass
+        
+        if zip_path.endswith(".zip"):
+            final_output = f"{conversion_id}.zip"
+        else:
+            final_output = output_gpkg
+            
+        if not os.path.exists(final_output):
+            raise FileNotFoundError(f"Output file was not created: {final_output}")
+        
+        logging.info(f"CONVERSION COMPLETED for ID: {conversion_id}. Size: {os.path.getsize(final_output)} bytes")
+        
+        with status_lock:
+            current_status = conversion_status.get(conversion_id, {})
+            uploaded_file = current_status.get("uploaded_file", False)
+        
+        update_conversion_status(
+            conversion_id, 
+            "completed", 
+            output=final_output,
+            file_size=os.path.getsize(final_output),
+            uploaded_file=uploaded_file
+        )
+        
+    except Exception as e:
+        logging.error(f"Error during conversion: {e}")
+        update_conversion_status(conversion_id, "failed", error=str(e))
+        cleanup_files(output_gpkg)
+
+def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_type: str) -> None:
+    """Process a single partition and append it to a GeoPackage file."""
+    gdf = gpd.GeoDataFrame(
+        partition.compute(), 
+        geometry="geometry", 
+        crs="EPSG:4326"
+    ).to_crs(crs)
+
+    valid_mask = (
+        gdf['geometry'].notna() & 
+        gdf['geometry'].is_valid & 
+        ~gdf['geometry'].is_empty
+    )
+    gdf = gdf[valid_mask].copy()
+
+    if len(gdf) == 0:
+        logging.warning("No valid geometries found in partition, skipping...")
+        return
+
+    if not isinstance(gdf, gpd.GeoDataFrame):
+        logging.warning("Partition was not a GeoDataFrame. Converting it to GeoDataFrame...")
+        gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs=crs)
+
+    gdf = apply_geometry_transformation(gdf, geom_type)
+    
+    # Write to GeoPackage with thread safety
     with write_lock:
-        write_dataframe(gdf, output_gpkg, driver="GPKG", encoding='utf8', promote_to_multi=True, append=True)
+        write_dataframe(
+            gdf, 
+            output_gpkg,
+            driver="GPKG", 
+            encoding='utf8', 
+            promote_to_multi=True, 
+            append=True
+        )
 
-def read_tsv_to_ddf(file_path, dtype_dict, converters, wkt_column):
-    """
-    Helper to read a TSV file into a Dask DataFrame and process WKT geometries.
-    """
+def read_tsv_as_dask_dataframe(file_path: str, wkt_column: str) -> dd.DataFrame:
+    """Read a TSV file into a Dask DataFrame and process WKT geometries."""
+    column_types = get_default_column_types()
+    
     ddf = dd.read_csv(
         file_path,
         sep="\t",
-        dtype=dtype_dict,
         assume_missing=True,
-        quoting=3,
+        quoting=3,  # csv.QUOTE_NONNUMERIC
         on_bad_lines="skip",
         encoding="utf-8",
-        blocksize="100MB",
-        converters=converters,
+        blocksize=CHUNK_SIZE,
+        header=0,  # Use first row (technical terms) in header
+        dtype=column_types,
+        skiprows=[1, 2],  # Skip other header rows
     )
 
-    # Convert WKT strings to Shapely geometries
-    ddf["geometry"] = ddf[wkt_column].map(safe_loads)
+    initial_count = len(ddf)
+    logging.debug(f"Read {initial_count} occurrences from {file_path}")
+
+    ddf = ddf[ddf[wkt_column].notnull()]  # Remove NA values #TODO: Maybe better to keep them in the future
+    ddf = ddf[ddf[wkt_column].str.strip() != ""]  # Remove empty strings and whitespace
+    
+    filtered_count = len(ddf)
+    removed_count = initial_count - filtered_count
+    
+    if removed_count > 0:
+        logging.debug(f"Filtered out {removed_count:,} rows with empty geometry values")
+    
+    ddf["geometry"] = ddf[wkt_column].map(safely_parse_wkt)
+    ddf = ddf.set_geometry("geometry")
+    ddf["geometry"] = ddf["geometry"].apply(normalize_geometry_collection)
+
     return ddf
 
-def compress_gpkg_to_zip(output_gpkg):
-    """
-    Zip the output GeoPackage file and delete the original one to save space.
-    """
-    zip_file_path = output_gpkg.replace(".gpkg", ".zip")
-    with ZipFile(zip_file_path, 'w') as zipf:
-        zipf.write(output_gpkg, arcname=os.path.basename(output_gpkg))
-    if os.path.exists(output_gpkg):
-        os.remove(output_gpkg)
-    logging.info(f"Zipped and output GeoPackage to: {zip_file_path} and deleted the original {output_gpkg}")
-
-def process_tsv_source(file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, converters, wkt_column, cleanup_temp=False, facts=None):
-    """
-    Process a TSV source (from temp file or disk).
-    """
+def process_tsv_data(
+    conversion_id: str,
+    zip_path: str,
+    temp_file_path: str, 
+    output_gpkg: str, 
+    geom_type: str, 
+    crs: str, 
+    wkt_column: str = "footprintWKT",
+    cleanup_temp: bool = False, 
+    compress_output: bool = True
+) -> None:
+    """Process TSV data from a file and convert it to GeoPackage format."""
     try:
-        ddf = read_tsv_to_ddf(file_path, dtype_dict, converters, wkt_column)
+        ddf = read_tsv_as_dask_dataframe(temp_file_path, wkt_column)
 
-        # Rename and reorder columns based on the lookup table
-        ddf = ddf.rename(columns=column_mapping)
-        existing_columns = [col for col in column_mapping.values() if col in ddf.columns]
-        ddf = ddf[existing_columns]
-
-        # Remove the output file if it already exists
+        logging.debug(f"Removing output GeoPackage: {output_gpkg} if exists already")
         if os.path.exists(output_gpkg):
             os.remove(output_gpkg)
 
-        # Set the geometry column and process geometries
-        ddf = ddf.set_geometry("geometry")
-        ddf["geometry"] = ddf["geometry"].apply(process_geometry)
-
-        # join facts to the dask dataframe using columns "Parent" and "Havainnon tunniste"
-        logging.info("Joining facts to the Dask DataFrame...")
-        if facts is not None:
-            ddf = ddf.merge(facts, how="left", left_on="record_id", right_on="Parent").drop(columns=["Parent"])
-
-        logging.info(f"Writing to GeoPackage {output_gpkg}...")
+        logging.debug(f"Writing to GeoPackage {output_gpkg}...")
 
         delayed_partitions = ddf.to_delayed()
         total_partitions = len(delayed_partitions)
 
         for idx, partition in enumerate(delayed_partitions):
-            logging.info(f"Writing partition {idx + 1} / {total_partitions}...")
-            save_partition(partition, crs, output_gpkg, geom_type)
+            logging.debug(f"Writing partition {idx + 1} / {total_partitions}...")
+            write_partition_to_geopackage(partition, crs, output_gpkg, geom_type)
 
     finally:
-        if cleanup_temp and os.path.exists(file_path):
-            os.remove(file_path)
-            logging.info(f"Deleted temp file: {file_path}")
+        logging.debug(f"Finished processing occurrences.txt -> {output_gpkg}")
+        if compress_output:
+            create_output_zip(zip_path, output_gpkg, conversion_id, cleanup_source=True)
 
-        compress_gpkg_to_zip(output_gpkg)
+        if cleanup_temp:
+            cleanup_files(zip_path)
 
-def extract_and_process_facts(fact_file, z, columns):
-    with z.open(fact_file) as file:
-        facts = pd.read_csv(file, sep="\t", header=0)
-
-    facts = facts[facts["Fact"].isin(columns)]
-    facts = facts.drop(columns=["IntValue", "DecimalValue"])
-
-    # Convert Fact values to column names and drop the original Fact column. Keep Value column as values.
-    facts = facts.pivot_table(index="Parent", columns="Fact", values="Value", aggfunc="first").reset_index()
-    return facts
-
-def get_facts(input_path):
-    """ Get unit and gathering facts from zipped unit_facts_HBF.id.tsv and gathering_facts_HBF.id.tsv files. """
-    with ZipFile(input_path, "r") as z:
-        file_name = os.path.split(input_path)[1].strip(".zip")
-
-        input_unit_fact_file = os.path.join(f"unit_facts_{file_name}.tsv")
-        input_gathering_fact_file = os.path.join(f"gathering_facts_{file_name}.tsv")
-        input_document_fact_file = os.path.join(f"document_facts_{file_name}.tsv")
-
-        unit_facts = extract_and_process_facts(input_unit_fact_file, z, ["Museo, johon lajista kerätty näyte on talletettu", "Havainnon laatu", "Havainnon määrän yksikkö"])
-        gathering_facts = extract_and_process_facts(input_gathering_fact_file, z, ["Vesistöalue", "Sijainnin tarkkuusluokka", "Pesintätulos"])
-        document_facts = extract_and_process_facts(input_document_fact_file, z, ["Seurattava laji"])
-
-    # merge all facts into one dataframe
-    facts = pd.merge(unit_facts, gathering_facts, how="left", on="Parent").merge(document_facts, how="left", on="Parent")
-
-    facts = facts.rename(columns={
-        "Vesistöalue": "event_fact_Vesistöalue",
-        "Sijainnin tarkkuusluokka": "event_fact_Sijainnin_tarkkuusluokka",
-        "Pesintätulos": "event_fact_Pesintätulos",
-        "Museo, johon lajista kerätty näyte on talletettu": "record_fact_Museo_johon_lajista_kerätty_näyte_on_talletettu",
-        "Havainnon laatu": "record_fact_Havainnon_laatu",
-        "Havainnon määrän yksikkö": "record_fact_Havainnon_määrän_yksikkö",
-        "Seurattava laji": "document_fact_Seurattava_laji"
-    })
-
-    return facts
-
-def tsv_to_gpkg(input_file, output_gpkg, geom_type="original", crs="EPSG:3067"):
-    """
-    Main function to process a ZIP file or standalone TSV file.
-    Reads the file(s), processes geometries, and writes the output to a GeoPackage.
-    """
-    logging.info(f"Processing {input_file} -> {output_gpkg}")
-
-    # Read the lookup table for column mappings and data types
-    lookup_path = os.path.join(os.path.dirname(__file__), "lookup_table.csv")
-    lookup_df = pd.read_csv(lookup_path, sep=',', header=0)
-
-    is_zip = input_file.endswith(".zip")
-
-    if is_zip:
-        dtype_dict = get_dtypes(lookup_df, column_name="finbif_api_var")
-        column_mapping = get_column_mapping(lookup_df, column_name="finbif_api_var")
-        facts = get_facts(input_file)
-    else:
-        dtype_dict = get_dtypes(lookup_df, column_name="lite_download_var")
-        column_mapping = get_column_mapping(lookup_df, column_name="lite_download_var")
-        facts = None
-
-    # Define converters for specific data types
-    converters = {col: convert_bool for col, dtype in dtype_dict.items() if dtype == 'bool'}
-    converters.update({col: convert_int_with_na for col, dtype in dtype_dict.items() if dtype == 'int'})
-
-    if is_zip:
-        with ZipFile(input_file, "r") as z:
-            for filename in z.namelist():
-                if filename.startswith("rows_") and filename.endswith(".tsv"):
-                    with z.open(filename) as file:
-                        with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
-                            tmp_file.write(file.read())
-                            tmp_file_path = tmp_file.name
-                    process_tsv_source(tmp_file_path, output_gpkg, geom_type, crs, dtype_dict, column_mapping, converters, wkt_column="Gathering.Conversions.WGS84_WKT", cleanup_temp=True, facts=facts)
-
-    else:
-        process_tsv_source(input_file, output_gpkg, geom_type, crs, dtype_dict, column_mapping, converters, wkt_column="WGS84 WKT", cleanup_temp=False, facts=facts)
-
-
-if __name__ == "__main__":
-    logging.info("Starting process locally...")
-
-    tsv_to_gpkg("test_data/HBF.98771.zip", f"output_from_zip.gpkg", geom_type="original", crs="EPSG:3067")
-    tsv_to_gpkg("test_data/laji-data.tsv", f"output_from_tsv.gpkg", geom_type="original", crs="EPSG:3067")

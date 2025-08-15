@@ -5,19 +5,20 @@ from zipfile import ZipFile
 import geopandas as gpd
 import pandas as pd
 from fiona import listlayers
+import settings
 
-logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+app_settings = settings.Settings()
+log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
+
+logging.basicConfig(
+    level=log_level, 
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 def gis_to_table(gis_file):
     """
-    Converts a GIS file (Shapefile, GeoPackage, GeoJSON) to a tabular pandas DataFrame
+    Converts a GIS file (Shapefile, GeoPackage, GeoJSON) to a CSV file
     with geometry stored as WKT in 'geometry_wkt' column.
-
-    Parameters:
-    gis_file (str): Path to the GIS file.
-
-    Returns:
-    pd.DataFrame: A DataFrame containing all attributes and geometry as WKT.
     """
     SUPPORTED_EXTENSIONS = {'.shp', '.geojson', '.json', '.gpkg', '.kml', '.gml'}
 
@@ -25,7 +26,7 @@ def gis_to_table(gis_file):
     gdf = None
 
     if ext == ".zip":
-        logging.info(f"ZIP archive detected: {gis_file}")
+        logging.debug(f"ZIP archive detected: {gis_file}")
         with tempfile.TemporaryDirectory() as tmpdir:
             with ZipFile(gis_file, 'r') as archive:
                 archive.extractall(tmpdir)
@@ -43,7 +44,7 @@ def gis_to_table(gis_file):
             if len(found_files) > 1:
                 logging.warning(f"Multiple GIS files found in ZIP. Using the first one: {found_files[0]}")
             else:
-                logging.info(f"Found supported GIS file: {found_files[0]}")
+                logging.debug(f"Found supported GIS file: {found_files[0]}")
 
             gdf = read_gis_file(found_files[0])
     else:
@@ -60,7 +61,7 @@ def gis_to_table(gis_file):
     # Save DataFrame as CSV
     csv_path = os.path.splitext(gis_file)[0] + ".csv"
     df.to_csv(csv_path, index=False)
-    logging.info(f"Saved table as CSV: {csv_path}")
+    logging.info(f"CONVERSION COMPLETED and: {csv_path} is ready. Size: {os.path.getsize(csv_path)} bytes")
 
     return csv_path
 
@@ -71,7 +72,7 @@ def read_gis_file(path):
     ext = os.path.splitext(path)[1].lower()
     if ext == ".gpkg":
         layers = listlayers(path)
-        logging.info(f"GeoPackage layers found: {layers}")
+        logging.debug(f"GeoPackage layers found: {layers}")
         gdfs = [gpd.read_file(path, layer=layer, engine='pyogrio') for layer in layers]
         return pd.concat(gdfs, ignore_index=True)
     else:

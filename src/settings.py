@@ -5,3 +5,4 @@ class Settings(BaseSettings):
     DW_URL: str
     FILE_PATH: str
     CONVERTER_ENV: str
+    LOGGING: str

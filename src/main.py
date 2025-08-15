@@ -1,21 +1,24 @@
 from functools import lru_cache
-from fastapi import FastAPI, File, UploadFile, HTTPException, Query, BackgroundTasks
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
+from fastapi.responses import FileResponse
 import shutil
 import tempfile
 import os
 import time
-from table_to_gpkg import tsv_to_gpkg
+from table_to_gpkg import handle_conversion_request
 from dw_service import is_valid_download_request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
-from threading import Lock
 from typing import Literal
 import settings
 from gis_to_table import gis_to_table
 
+# Get settings and configure logging
+app_settings = settings.Settings()
+log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
+
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=log_level)
 
 app = FastAPI()
 
@@ -28,78 +31,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Dictionary to track conversion statuses and file paths
-conversion_status = {}
-status_lock = Lock()
-
-#dict for mapping crs to their EPSG-id
-crs_map = {
-  "euref": "EPSG:3067",
-  "wgs84": "EPSG:4326"
-}
-
-geo_map = {
-  "point": "points",
-  "bbox": "bbox",
-  "footprint": "original"
-}
-
 @lru_cache
 def get_settings():
   return settings.Settings()
 
-def convert_tsv_to_gpkg(id, zip_path, geo, crs, background_tasks, uploaded_file):
-    file_size = os.path.getsize(zip_path)
-    output_gpkg = tempfile.NamedTemporaryFile(delete=False, suffix=".gpkg").name
-    conversion_id = id
-
-    geo = geo_map[geo]
-    crs = crs_map[crs]
-    
-    def process_file():
-        """Handles file processing."""
-        try:
-            tsv_to_gpkg(zip_path, output_gpkg, geom_type=geo, crs=crs)
-            with status_lock:
-                conversion_status[conversion_id] = {
-                    "status": "completed",
-                    "output": output_gpkg,
-                    "timestamp": time.time(),
-                    "uploaded_file": uploaded_file,
-                }
-        except Exception as e:
-            logging.error(f"Error during conversion: {e}")
-            with status_lock:
-                conversion_status[conversion_id] = {"status": "failed"}
-        finally:
-            if uploaded_file:
-              os.remove(zip_path)
-
-    if file_size < 10 * 1024 * 1024:  # Small files: process immediately
-        process_file()
-        return {
-            "id": conversion_id,
-            "status": "completed",
-            "download_url": f"/output/{conversion_id}"
-        }
-    else:  # Large files: process in the background
-        with status_lock:
-            conversion_status[conversion_id] = {
-                "status": "processing",
-                "output": output_gpkg,
-                "timestamp": time.time(),
-                "uploaded_file": uploaded_file,
-            }
-        background_tasks.add_task(process_file)
-        return {
-            "id": conversion_id,
-            "status": "processing",
-            "status_url": f"/status/{conversion_id}",
-            "download_url": f"/output/{conversion_id}"
-        }
-
 @app.post("/convert-to-table")
-async def convert_gis_to_table_api(
+async def convert_gis_to_table(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...)
 ):
@@ -107,7 +44,7 @@ async def convert_gis_to_table_api(
     Convert a GIS file to a tabular CSV using the gis_to_table() function.
     Returns the saved CSV file with geometry as WKT.
     """
-    logging.info(f"Received GIS file: {file.filename}")
+    logging.info(f"Received GIS file: {file.filename}, format: {file.content_type}")
 
     # Validate file extension
     SUPPORTED_EXTENSIONS = {'.shp', '.geojson', '.json', '.gpkg', '.kml', '.gml', '.zip'}
@@ -134,7 +71,7 @@ async def convert_gis_to_table_api(
             background_tasks.add_task(os.remove, csv_path)
 
             
-        logging.info(f"Returning CSV file: {csv_path}")
+        logging.debug(f"Returning CSV file: {csv_path}")
         return FileResponse(csv_path, filename=basename, media_type="text/csv")
 
     except Exception as e:
@@ -144,18 +81,21 @@ async def convert_gis_to_table_api(
 @app.get("/convert/{id}/{fmt}/{geo}/{crs}")
 async def convert_with_id(
   id: str,
-  fmt: Literal["gpkg"],
+  fmt: Literal["gpkg"], # TODO: Remove this parameter later when on production?
   geo: Literal["bbox", "point", "footprint"],
   crs: Literal["euref","wgs84"],
   background_tasks: BackgroundTasks,
   personToken: str | None = None
 ):
     """API enpoint to start converting file stored in dw"""
+
+    logging.info(f"Received request to convert ID: {id}, geo: {geo}, crs: {crs}")
+
     if not is_valid_download_request(id, personToken):
       raise HTTPException(status_code=403, detail="Permission denied.")
 
     zip_path = get_settings().FILE_PATH + id + ".zip"
-    return convert_tsv_to_gpkg(id, zip_path, geo, crs, background_tasks, False)
+    return handle_conversion_request(id, zip_path, geo, crs, background_tasks, False)
 
 @app.post("/convert/{id}/{fmt}/{geo}/{crs}")
 async def convert_with_file(
@@ -175,12 +115,13 @@ async def convert_with_file(
         shutil.copyfileobj(file.file, temp_zip)
         temp_zip_path = temp_zip.name
 
-    return convert_tsv_to_gpkg(id, temp_zip_path, geo, crs, background_tasks, True)
+    return handle_conversion_request(id, temp_zip_path, geo, crs, background_tasks, True)
 
 @app.get("/status/{id}")
 async def get_status(id: str):
     """ Endpoint to check the status of a conversion. """
     logging.info(f"Checking status for conversion ID: {id}")
+    from table_to_gpkg import conversion_status, status_lock
     with status_lock:
         if id not in conversion_status:
             raise HTTPException(status_code=404, detail="Conversion ID not found.")
@@ -191,6 +132,7 @@ async def get_status(id: str):
 async def get_output(id: str, personToken: str | None = None):
     """ Endpoint to retrieve the output file for a completed conversion. """
     logging.info(f"Retrieving output for conversion ID: {id}")
+    from table_to_gpkg import conversion_status, status_lock
     with status_lock:
         if id not in conversion_status:
             raise HTTPException(status_code=404, detail="Conversion ID not found.")
@@ -203,7 +145,10 @@ async def get_output(id: str, personToken: str | None = None):
         uploaded_file = status['uploaded_file']
         if not uploaded_file and not is_valid_download_request(id, personToken):
             raise HTTPException(status_code=403, detail="Permission denied.")
-        return FileResponse(output_path, filename="output.gpkg", media_type="application/geopackage+sqlite3")
+        
+        # Use original filename if available, otherwise use the conversion ID
+        original_filename = status.get("original_filename", id)
+        return FileResponse(output_path, filename=f"{original_filename}.zip", media_type="application/zip")
 
 @app.on_event("startup")
 async def cleanup_old_files():
@@ -212,6 +157,7 @@ async def cleanup_old_files():
         logging.info("Starting cleanup thread...")
         while True:
             time.sleep(3600)  # Run cleanup every hour
+            from table_to_gpkg import conversion_status, status_lock
             with status_lock:
                 current_time = time.time()
                 for id, status in list(conversion_status.items()):

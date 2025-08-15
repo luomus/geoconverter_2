@@ -1,3 +1,4 @@
+import pandas as pd
 from shapely.errors import ShapelyError
 from shapely.geometry import (
     GeometryCollection, LineString, MultiLineString, MultiPoint,
@@ -136,26 +137,8 @@ def apply_geometry_transformation(gdf: gpd.GeoDataFrame, geom_type: str) -> gpd.
     else:  # original/footprint
         return result_gdf
 
-def get_default_column_types() -> Dict[str, str]:
-    """Get default column type mappings for TSV data. TODO: Get this from a file"""
-    return {
-        'additionalIDs': 'object',
-        'dynamicProperties': 'object',
-        'eventRemarks': 'object',
-        'habitat': 'object',
-        'identifiedBy': 'object',
-        'lajiturvaStatus': 'object',
-        'lifeStage': 'object',
-        'locationID': 'object',
-        'occurrenceRemarks': 'object',
-        'organismQuantityType': 'object',
-        'qualityControl': 'object',
-        'sex': 'object',
-        'HBDF.informationWithheld': 'object',
-        'atlasClass': 'object',
-        'atlasCode': 'object',
-        'locationStatus': 'object',
-        'locationType': 'object',
-        'organismQuantity': 'object',
-        'originatingSource': 'object'
-        }
+def get_default_column_types(language, dtypes_path) -> Dict[str, str]:
+    """Get default column type mappings for TSV data."""
+    df = pd.read_csv(dtypes_path, delimiter='\t', dtype=str)
+    dtypes = dict(zip(df[language], df["dtype"]))
+    return dtypes

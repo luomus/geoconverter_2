@@ -1,0 +1,70 @@
+tech	fi	en	dtype
+occurrenceID	Havainnon tunniste	Occurrence ID	object
+eventID	Keruutapahtuman tunniste	Event ID	object
+parentEventID	Näytteen tunniste / Havaintoerä	Specimen ID / Parent Event ID	object
+verbatimIdentification	Ilmoitettu nimi	Verbatim Identification	object
+recordedBy	Havainnoijat / Kerääjät	Recorded By / Collector	object
+identifiedBy	Määrittäjä	Identified By	object
+taxonConceptID	Taksonikäsitteen tunniste	Taxon Concept ID	object
+scientificName	Tieteellinen nimi	Scientific Name	object
+scientificNameAuthorship	Auktori	Scientific Name Authorship	object
+taxonRank	Taksonominen taso	Taxon Rank	object
+kingdom	Kunta	Kingdom	object
+class	Luokka	Class	object
+order	Lahko	Order	object
+family	Heimo	Family	object
+informalTaxonGroup	Eliöryhmä	Informal Taxon Group	object
+vernacularName	Yleiskielinen nimi (suomi)	Vernacular Name (Finnish)	object
+vernacularNameSwedish	Yleiskielinen nimi (ruotsi)	Vernacular Name (Swedish)	object
+redListStatusFinland	Uhanalaisuus Suomessa	Red List Status (Finland)	object
+lajiturvaStatus	Lajiturva -luokittelu	Lajiturva Status	object
+regulatoryStatuses	Hallinnollinen asema	Regulatory Statuses	category
+taxonPreferredHabitat	Lajin elinympäristö	Taxon Preferred Habitat	object
+habitat	Havainnon habitaatti	Occurrence Habitat	object
+isSensitiveTaxon	Sensitiivinen laji	Is Sensitive Taxon	bool
+dataGeneralizations	Karkeistustaso	Data Generalizations	object
+informationWitheld	Karkeistuksen syyt	Information Withheld	object
+datasetCurationLevel	Aineiston laatu	Dataset Curation Level	category
+identificationVerificationStatus	Havainnon luotettavuus	Identification Verification Status	object
+qualityControl	Laadunvalvontatagit	Quality Control Tags	object
+datasetID	Aineiston/Kokoelman tunniste	Dataset ID	object
+datasetName	Aineisto/Kokoelma	Dataset Name	object
+source	Lähdejärjestelmän tunniste	Source ID	object
+sourceName	Lähdejärjestelmä	Source Name	object
+originatingSource	Alkuperäinen tietolähde	Originating Source	object
+eventDate	Havaintoaika	Event Date	object
+countryCode	Maa	Country	object
+biogeographicalProvince	Eliömaakunta	Biogeographical Province	object
+municipality	Kunta	Municipality	object
+verbatimLocality	Ilmoitetut paikannimet	Verbatim Locality	object
+locationID	Seurantapaikan tunniste	Site ID	object
+locationType	Seurantapaikan tyyppi	Site Type	category
+locationStatus	Seurantapaikan tila	Site Status	category
+basisOfRecord	Havainnointitapa	Basis of Record	object
+lifeStage	Elinvaihe	Life Stage	category
+sex	Sukupuoli	Sex	category
+femaleIndividualCount	Naaraiden yksilömäärä	Female Individual Count	int
+maleIndividualCount	Koiraiden yksilömäärä	Male Individual Count	int
+organismQuantity	Määrä	Abundance	object
+organismQuantityType	Määrän yksikkö	Abundance Unit	object
+individualCount	Tulkittu yksilömäärä (min)	Interpreted Individual Count (min)	int
+pairCount	Parimäärä	Pair Count	int
+isMigrating	Muuttaja	Migration Status	bool
+isBreedingSite	Lisääntymispaikka	Breeding Site	bool
+invasiveTaxonManagementAction	Vieraslajin torjunta	Invasive Taxon Management Action	object
+atlasCode	Pesimävarmuusindeksi	Breeding Bird Atlas Code	category
+atlasClass	Pesimävarmuusluokka	Breeding Bird Atlas Class	category
+dynamicProperties	Lisämuuttujat	Additional Attributes	object
+georeferenceSources	Koordinaattien lähde	Coordinate Source	category
+isStateLand	Valtion maalla	State Land	bool
+coordinateAccuracy	Koordinaattien tarkkuus (m)	Coordinate Accuracy (m)	int
+footprintWKT	WGS84 geometria	Footprint WKT	object
+decimalLatitude	WGS84 leveys	Decimal Latitude	object
+decimalLongitude	WGS84 pituus	Decimal Longitude	object
+gridCellYKJ	YKJ kymppiruutu	YKJ 10km Grid Cell	object
+occurrenceRemarks	Lisätiedot havainnost	Occurrence Remarks	object
+eventRemarks	Lisätiedot keruutapahtumasta	Event Remarks	object
+additionalIDs	Lisätunnisteet	Additional IDs	object
+availableDate	Vastaanotettu Lajitietokeskuksessa	Date Available in FinBIF	object
+license	Lisenssi	License	category
+qualityIssues	Virheet	Quality Issues	object

@@ -77,11 +77,11 @@ async def convert_gis_to_table(
     except Exception as e:
         logging.error(f"GIS-to-table conversion failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-    
-@app.get("/convert/{id}/{fmt}/{geo}/{crs}")
+
+@app.get("/convert/{id}/{lang}/{geo}/{crs}")
 async def convert_with_id(
   id: str,
-  fmt: Literal["gpkg"], # TODO: Remove this parameter later when on production?
+  lang: Literal["fi", "en", "tech"],
   geo: Literal["bbox", "point", "footprint"],
   crs: Literal["euref","wgs84"],
   background_tasks: BackgroundTasks,
@@ -89,18 +89,18 @@ async def convert_with_id(
 ):
     """API enpoint to start converting file stored in dw"""
 
-    logging.info(f"Received request to convert ID: {id}, geo: {geo}, crs: {crs}")
+    logging.info(f"Received request to convert ID: {id}, lang: {lang}, geo: {geo}, crs: {crs}")
 
     if not is_valid_download_request(id, personToken):
       raise HTTPException(status_code=403, detail="Permission denied.")
 
     zip_path = get_settings().FILE_PATH + id + ".zip"
-    return handle_conversion_request(id, zip_path, geo, crs, background_tasks, False)
+    return handle_conversion_request(id, zip_path, lang, geo, crs, background_tasks, False)
 
-@app.post("/convert/{id}/{fmt}/{geo}/{crs}")
+@app.post("/convert/{id}/{lang}/{geo}/{crs}")
 async def convert_with_file(
     id: str,
-    fmt: Literal["gpkg"],
+    lang: Literal["fi", "en", "tech"],
     geo: Literal["bbox", "point", "footprint"],
     crs: Literal["euref","wgs84"],
     background_tasks: BackgroundTasks,
@@ -108,14 +108,14 @@ async def convert_with_file(
 ):
     """API endpoint to receive ZIP TSV file and return a GeoPackage."""
 
-    logging.info(f"Received file: {file.filename}, geo: {geo}, crs: {crs}")
+    logging.info(f"Received file: {file.filename}, language: {lang}, geo: {geo}, crs: {crs}")
 
     # Create a temporary file to store the uploaded zip
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
         shutil.copyfileobj(file.file, temp_zip)
         temp_zip_path = temp_zip.name
 
-    return handle_conversion_request(id, temp_zip_path, geo, crs, background_tasks, True)
+    return handle_conversion_request(id, temp_zip_path, lang, geo, crs, background_tasks, True)
 
 @app.get("/status/{id}")
 async def get_status(id: str):

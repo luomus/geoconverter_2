@@ -47,18 +47,31 @@ GEOMETRY_TYPE_MAPPING = {
     "footprint": "original"
 }
 
+LANGUAGE_MAPPING = {
+    "tech": 0,
+    "fi": 1,
+    "en": 2
+}
+
+GEOMETRY_LANG_MAPPING = {
+    "fi": "WGS84 geometria",
+    "en": "Footprint WKT",
+    "tech": "footprintWKT"
+}
+
 conversion_status: Dict = {}
 
 LARGE_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB
 CHUNK_SIZE = "100MB"
 
-def handle_conversion_request(conversion_id: str, zip_path: str, geo_type: str, crs: str, background_tasks, uploaded_file: bool) -> Union[FileResponse, dict]:
+def handle_conversion_request(conversion_id: str, zip_path: str, language: str, geo_type: str, crs: str, background_tasks, uploaded_file: bool) -> Union[FileResponse, dict]:
     """
     Handle API conversion request - manages status tracking and task scheduling.
     
     Args:
         conversion_id: Unique identifier (file name) for this conversion. E.g. HBF.12345
         zip_path: Path to the input ZIP file
+        language: Language for the column names ('fi', 'en', 'tech')
         geo_type: Type of geometry processing ('point', 'bbox', 'footprint')
         crs: Coordinate reference system ('euref', 'wgs84')
         background_tasks: FastAPI background tasks manager
@@ -82,7 +95,7 @@ def handle_conversion_request(conversion_id: str, zip_path: str, geo_type: str, 
     
     if file_size < LARGE_FILE_THRESHOLD:
         # Small files: process immediately and clean up after
-        process_file_conversion(zip_path, mapped_geo_type, mapped_crs, conversion_id)
+        process_file_conversion(zip_path, language, mapped_geo_type, mapped_crs, conversion_id)
                 
         return {
             "id": conversion_id,
@@ -95,7 +108,7 @@ def handle_conversion_request(conversion_id: str, zip_path: str, geo_type: str, 
         
     else:
         # Large files: process in background (background task handles cleanup)
-        background_tasks.add_task(process_file_conversion, zip_path, mapped_geo_type, mapped_crs, conversion_id)
+        background_tasks.add_task(process_file_conversion, zip_path, language, mapped_geo_type, mapped_crs, conversion_id)
 
         return {
             "id": conversion_id,
@@ -136,7 +149,6 @@ def create_output_zip(zip_path: str, output_gpkg: str, conversion_id: str, clean
         with ZipFile(zip_path_out, "w", zipfile.ZIP_DEFLATED) as zip_out:
             for root, _, files in os.walk(temp_dir):
                 for file in files:
-                    logging.debug(f"Adding {file} to zip {zip_path_out}")
                     abs_path = os.path.join(root, file)
                     rel_path = os.path.relpath(abs_path, temp_dir)
                     zip_out.write(abs_path, rel_path)
@@ -167,8 +179,12 @@ def cleanup_files(*file_paths: str) -> None:
             except OSError as e:
                 logging.warning(f"Failed to clean up {file_path}: {e}")
 
-def process_file_conversion(zip_path: str, geo_type: str, crs: str, conversion_id: str) -> None:
+def process_file_conversion(zip_path: str, language: str, geo_type: str, crs: str, conversion_id: str) -> None:
+    """Process file conversion from ZIP/TSV to GeoPackage."""
+    
     output_gpkg = f'{conversion_id}.gpkg'
+    wkt_column = GEOMETRY_LANG_MAPPING[language]
+
 
     try:
         logging.debug(f"Processing {zip_path} -> {output_gpkg}")
@@ -188,9 +204,10 @@ def process_file_conversion(zip_path: str, geo_type: str, crs: str, conversion_i
                 zip_path,
                 temp_file_path, 
                 output_gpkg, 
+                language,
                 geo_type, 
                 crs, 
-                wkt_column="footprintWKT",
+                wkt_column=wkt_column,
                 cleanup_temp=True, 
                 compress_output=True
             )
@@ -261,10 +278,20 @@ def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_ty
             append=True
         )
 
-def read_tsv_as_dask_dataframe(file_path: str, wkt_column: str) -> dd.DataFrame:
+def read_tsv_as_dask_dataframe(file_path: str, language: str, wkt_column: str) -> dd.DataFrame:
     """Read a TSV file into a Dask DataFrame and process WKT geometries."""
-    column_types = get_default_column_types()
-    
+    column_types = get_default_column_types(language, dtypes_path='lookup_table.tsv')
+    mapped_language = LANGUAGE_MAPPING.get(language, 0)
+    skipped_rows = [0, 1, 2]
+    skipped_rows.remove(mapped_language)
+
+    # Define converters for specific data types
+    converters = {
+        **{col: convert_boolean_value for col, dtype in column_types.items() if dtype == 'bool'},
+        **{col: convert_numeric_with_na for col, dtype in column_types.items() if dtype == 'int'}
+    }
+
+
     ddf = dd.read_csv(
         file_path,
         sep="\t",
@@ -273,9 +300,10 @@ def read_tsv_as_dask_dataframe(file_path: str, wkt_column: str) -> dd.DataFrame:
         on_bad_lines="skip",
         encoding="utf-8",
         blocksize=CHUNK_SIZE,
-        header=0,  # Use first row (technical terms) in header
+        header=0, # is always 0 as we skip rows
         dtype=column_types,
-        skiprows=[1, 2],  # Skip other header rows
+        skiprows=skipped_rows,  # Skip other header rows
+        converters=converters
     )
 
     initial_count = len(ddf)
@@ -301,15 +329,16 @@ def process_tsv_data(
     zip_path: str,
     temp_file_path: str, 
     output_gpkg: str, 
+    language: str, 
     geom_type: str, 
     crs: str, 
-    wkt_column: str = "footprintWKT",
+    wkt_column: str,
     cleanup_temp: bool = False, 
     compress_output: bool = True
 ) -> None:
     """Process TSV data from a file and convert it to GeoPackage format."""
     try:
-        ddf = read_tsv_as_dask_dataframe(temp_file_path, wkt_column)
+        ddf = read_tsv_as_dask_dataframe(temp_file_path, language, wkt_column)
 
         logging.debug(f"Removing output GeoPackage: {output_gpkg} if exists already")
         if os.path.exists(output_gpkg):

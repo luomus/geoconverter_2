@@ -33,13 +33,13 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 
 *Note: The `Accept` header specifies the expected response format, while `Content-Type` is automatically set by curl when using `-F` for file uploads but is included here for clarity.*
 
-### `/convert/{id}/{fmt}/{geo}/{crs}` (POST)
+### `/convert/{id}/{lang}/{geo}/{crs}` (POST)
 
 **Description:** Converts a ZIP file containing TSV data into a GeoPackage. Should have the same schema and content as downloadable files from FinBIF.
 
 **Path parameters:**
 - `id`: Name for the converted file
-- `fmt`: Output format (currently only `gpkg` is supported)
+- `lang`: Language of the headers - one of `fi`, `en`, or `tech`
 - `geo`: Geometry type - one of `footprint`, `bbox`, or `point`
 - `crs`: Coordinate Reference System (CRS) for output - either `wgs84` or `euref`
 
@@ -48,19 +48,19 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 
 **Example Request:**
 ```bash
-curl -X 'POST' 'http://127.0.0.1:8000/convert/myfile/gpkg/footprint/wgs84' \
+curl -X 'POST' 'http://127.0.0.1:8000/convert/myfile/tech/footprint/wgs84' \
     -H "Accept: application/json" \
     -H "Content-Type: multipart/form-data" \
     -F "file=@input.zip"
 ```
 
-### `/convert/{id}/{fmt}/{geo}/{crs}` (GET)
+### `/convert/{id}/{lang}/{geo}/{crs}` (GET)
 
 **Description:** Downloads and converts a file by ID from files stored on the FinBIF data warehouse server
 
 **Path parameters:**
 - `id`: ID for file download on the FinBIF server
-- `fmt`: Output format (currently only `gpkg` is supported)
+- `lang`: Language of the headers - one of `fi`, `en`, or `tech`
 - `geo`: Geometry type - one of `footprint`, `bbox`, or `point`
 - `crs`: Coordinate Reference System (CRS) for output - either `wgs84` or `euref`
 

@@ -1,17 +1,29 @@
+"""
+Test suite for gis_to_table module.
+
+Run with: python -m pytest tests/test_gis_to_table.py -v
+"""
+
 import os, sys
 import tempfile
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import Point
 import zipfile
+from unittest.mock import MagicMock
+
+class MockSettings:
+    LOGGING = "INFO"
+
+mock_settings = MagicMock()
+mock_settings.Settings.return_value = MockSettings()
+sys.modules['settings'] = mock_settings
 
 sys.path.append('src/')
 import gis_to_table
 
-# run with:
-# python -m pytest tests/test_gis_to_table.py -v
-
-def test_read_gis_file_with_geojson():
+def test_read_gis_file_basic():
+    """Test basic functionality of read_gis_file with different formats."""
     with tempfile.TemporaryDirectory() as tmp:
         path1 = os.path.join(tmp, "simple.geojson")
         path2 = os.path.join(tmp, "simple.gpkg")
@@ -27,12 +39,15 @@ def test_read_gis_file_with_geojson():
         result = gis_to_table.read_gis_file(path1)
         assert isinstance(result, gpd.GeoDataFrame)
         assert len(result) == 1
+        assert result['name'].iloc[0] == "X"
 
         result = gis_to_table.read_gis_file(path2)
         assert isinstance(result, gpd.GeoDataFrame)
         assert len(result) == 1
+        assert result['name'].iloc[0] == "X"
 
-def test_gis_to_table_with_zip():
+def test_gis_to_table_zip_conversion():
+    """Test complete GIS to table conversion with ZIP archive."""
     with tempfile.TemporaryDirectory() as tmp:
         geojson_path = os.path.join(tmp, "data.geojson")
 

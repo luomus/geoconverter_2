@@ -142,3 +142,9 @@ def get_default_column_types(language, dtypes_path) -> Dict[str, str]:
     df = pd.read_csv(dtypes_path, delimiter='\t', dtype=str)
     dtypes = dict(zip(df[language], df["dtype"]))
     return dtypes
+
+def get_converters(column_types):
+    return {
+        **{col: convert_boolean_value for col, dtype in column_types.items() if dtype == 'bool'},
+        **{col: convert_numeric_with_na for col, dtype in column_types.items() if dtype == 'int'}
+    }

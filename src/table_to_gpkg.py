@@ -286,11 +286,7 @@ def read_tsv_as_dask_dataframe(file_path: str, language: str, wkt_column: str) -
     skipped_rows.remove(mapped_language)
 
     # Define converters for specific data types
-    converters = {
-        **{col: convert_boolean_value for col, dtype in column_types.items() if dtype == 'bool'},
-        **{col: convert_numeric_with_na for col, dtype in column_types.items() if dtype == 'int'}
-    }
-
+    converters = get_converters(column_types)
 
     ddf = dd.read_csv(
         file_path,

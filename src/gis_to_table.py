@@ -53,10 +53,14 @@ def gis_to_table(gis_file):
     if gdf is None or gdf.empty:
         raise RuntimeError("No features found in the GIS file.")
     
+    # Store CRS information
+    crs_info = str(gdf.crs) if gdf.crs is not None else "Unknown"
+    
     # Handle geometry as WKT
     gdf["geometry_wkt"] = gdf.geometry.to_wkt()
+    gdf["crs"] = crs_info 
     df = gdf.drop(columns=gdf.geometry.name)
-    logging.info(f"Converted {len(df)} records to a table successfully.")
+    logging.info(f"Converted {len(df)} records in {gdf.crs} to a table successfully.")
 
     # Save DataFrame as CSV
     csv_path = os.path.splitext(gis_file)[0] + ".csv"

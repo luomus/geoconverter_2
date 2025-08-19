@@ -68,3 +68,4 @@ def test_gis_to_table_zip_conversion():
         df = pd.read_csv(output_path)
         assert not df.empty
         assert "geometry_wkt" in df.columns
+        assert "crs" in df.columns

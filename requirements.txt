@@ -1,13 +1,13 @@
-dask==2025.2.0
-dask_geopandas==0.5.0
+dask==2024.8.0
+dask_geopandas==0.4.2
 fastapi==0.115.12
 fiona==1.9.6
-geopandas==1.1.0
+geopandas==1.0.1
 pandas==2.3.0
 pydantic_settings==2.9.1
 pyogrio==0.7.2
 Requests==2.32.3
-Shapely==2.1.1
+Shapely==2.0.7
 uvicorn==0.34.0
 numpy<2
 python-multipart==0.0.20

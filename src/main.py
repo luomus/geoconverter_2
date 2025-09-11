@@ -9,7 +9,7 @@ from table_to_gpkg import handle_conversion_request
 from dw_service import is_valid_download_request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
-from typing import Literal
+from typing import Literal, Optional
 import settings
 from gis_to_table import gis_to_table
 
@@ -85,7 +85,7 @@ async def convert_with_id(
   geo: Literal["bbox", "point", "footprint"],
   crs: Literal["euref","wgs84"],
   background_tasks: BackgroundTasks,
-  personToken: str | None = None
+  personToken: Optional[str]= None
 ):
     """API enpoint to start converting file stored in dw"""
 
@@ -129,7 +129,7 @@ async def get_status(id: str):
         return {"status": status["status"]}
 
 @app.get("/output/{id}")
-async def get_output(id: str, personToken: str | None = None):
+async def get_output(id: str, personToken: Optional[str] = None):
     """ Endpoint to retrieve the output file for a completed conversion. """
     logging.info(f"Retrieving output for conversion ID: {id}")
     from table_to_gpkg import conversion_status, status_lock

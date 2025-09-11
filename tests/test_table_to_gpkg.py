@@ -32,7 +32,7 @@ from table_to_gpkg import (
     update_conversion_status,
     cleanup_files,
     handle_conversion_request,
-    process_file_conversion,
+    convert_file,
     write_partition_to_geopackage,
     read_tsv_as_dask_dataframe,
     process_tsv_data,
@@ -54,9 +54,9 @@ from table_to_gpkg import (
         (12 * 1024 * 1024, "processing", True)  # large file (12 MB)
     ]
 )
-@patch("table_to_gpkg.process_file_conversion")
+@patch("table_to_gpkg.convert_file")
 def test_handle_conversion_request(
-    mock_process, file_size, expected_status, expect_background, tmp_path
+    mock_convert, file_size, expected_status, expect_background, tmp_path
 ):
     # Create temp file with desired size
     test_file = tmp_path / "test.zip"
@@ -80,9 +80,9 @@ def test_handle_conversion_request(
 
     if expect_background:
         background_tasks.add_task.assert_called_once()
-        mock_process.assert_not_called()
+        mock_convert.assert_not_called()
     else:
-        mock_process.assert_called_once()
+        mock_convert.assert_called_once()
         background_tasks.add_task.assert_not_called()
 
 def test_create_output_zip(tmp_path):
@@ -185,16 +185,16 @@ def _create_fake_zip(tmp_path):
 @patch("table_to_gpkg.os.path.getsize")
 @patch("table_to_gpkg.process_tsv_data")
 @patch("table_to_gpkg.update_conversion_status")
-def test_process_file_conversion_success(mock_update_status, mock_process_tsv, mock_getsize, mock_exists, tmp_path):
-    """Test process_file_conversion with success scenario."""
+def test_convert_file_success(mock_update_status, mock_process_tsv, mock_getsize, mock_exists, tmp_path):
+    """Test convert_file with success scenario."""
     conversion_id = "test123"
     zip_path = _create_fake_zip(tmp_path)
     
     mock_exists.return_value = True
     mock_getsize.return_value = 1024
-    
-    process_file_conversion(str(zip_path), "en", "point", "wgs84", conversion_id)
-    
+
+    convert_file(str(zip_path), "en", "point", "wgs84", conversion_id)
+
     mock_process_tsv.assert_called_once()
     
     final_call = mock_update_status.call_args_list[-1]
@@ -205,16 +205,16 @@ def test_process_file_conversion_success(mock_update_status, mock_process_tsv, m
 @patch("table_to_gpkg.process_tsv_data")
 @patch("table_to_gpkg.update_conversion_status")
 @patch("table_to_gpkg.cleanup_files")
-def test_process_file_conversion_failure(mock_cleanup, mock_update_status, mock_process_tsv, tmp_path):
-    """Test process_file_conversion handles failures correctly."""
+def test_convert_file_failure(mock_cleanup, mock_update_status, mock_process_tsv, tmp_path):
+    """Test convert_file handles failures correctly."""
     conversion_id = "test456"
     zip_path = _create_fake_zip(tmp_path)
     
     # Make process_tsv_data raise an exception
     mock_process_tsv.side_effect = Exception("Processing failed")
-    
-    process_file_conversion(str(zip_path), "en", "point", "wgs84", conversion_id)
-    
+
+    convert_file(str(zip_path), "en", "point", "wgs84", conversion_id)
+
     # Verify update_conversion_status was called with "failed"
     final_call = mock_update_status.call_args_list[-1]
     assert final_call[0][0] == conversion_id

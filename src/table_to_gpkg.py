@@ -2,6 +2,7 @@ import logging
 import os
 import tempfile
 import zipfile
+import shutil
 from threading import Lock
 from time import time
 from typing import Dict, Union
@@ -95,7 +96,7 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
     
     if file_size < LARGE_FILE_THRESHOLD:
         # Small files: process immediately and clean up after
-        process_file_conversion(zip_path, language, mapped_geo_type, mapped_crs, conversion_id)
+        convert_file(zip_path, language, mapped_geo_type, mapped_crs, conversion_id)
                 
         return {
             "id": conversion_id,
@@ -108,7 +109,7 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
         
     else:
         # Large files: process in background (background task handles cleanup)
-        background_tasks.add_task(process_file_conversion, zip_path, language, mapped_geo_type, mapped_crs, conversion_id)
+        background_tasks.add_task(convert_file, zip_path, language, mapped_geo_type, mapped_crs, conversion_id)
 
         return {
             "id": conversion_id,
@@ -126,37 +127,32 @@ def create_output_zip(zip_path: str, output_gpkg: str, conversion_id: str, clean
     logging.debug(f"Creating output ZIP: {zip_path} with GPKG: {output_gpkg}")
     zip_path_out = conversion_id + '.zip'
 
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Extract all files from the original zip
-        with ZipFile(zip_path, "r") as zip_in:
-            logging.debug(f"Extracting files from {zip_path} to {temp_dir}")
-            zip_in.extractall(temp_dir)
-            logging.debug(f"Extracted {len(zip_in.namelist())} files from {zip_path} to {temp_dir}")
+    with ZipFile(zip_path, "r") as zin, ZipFile(zip_path_out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        for zi in zin.infolist():
+            # Skip the occurrences.txt at the root of the input zip
+            if zi.filename == "occurrences.txt":
+                logging.debug("Skipping occurrences.txt in output zip")
+                continue
 
-        occurrences_path = os.path.join(temp_dir, 'occurrences.txt')
-        if os.path.exists(occurrences_path):
-            os.remove(occurrences_path)
-            logging.debug(f"Removed occurrences.txt from {temp_dir}")
+            if zi.is_dir():
+                # Preserve explicit directory entries if present
+                zout.writestr(zi, b"")
+                continue
 
-        gpkg_dest = os.path.join(temp_dir, output_gpkg)
+            # Stream-copy file contents to avoid loading into memory or disk
+            with zin.open(zi, "r") as src, zout.open(zi, "w") as dst:
+                shutil.copyfileobj(src, dst, length=1_048_576)
+                logging.debug(f"Added {zi.filename} to zip {zip_path_out}")
+
+        # Finally, add the generated GPKG to the root of the output zip
         if os.path.exists(output_gpkg):
-            os.replace(output_gpkg, gpkg_dest)
-            logging.debug(f"Replaced {gpkg_dest} with {output_gpkg}")
+            zout.write(output_gpkg, arcname=os.path.basename(output_gpkg))
+            logging.debug(f"Added {output_gpkg} to zip {zip_path_out}")
         else:
             logging.warning(f"GPKG file not found: {output_gpkg}")
 
-        # Recreate the zip with the same folder structure and name
-        with ZipFile(zip_path_out, "w", zipfile.ZIP_DEFLATED) as zip_out:
-            for root, _, files in os.walk(temp_dir):
-                for file in files:
-                    abs_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(abs_path, temp_dir)
-                    zip_out.write(abs_path, rel_path)
-                    logging.debug(f"Added {rel_path} to zip {zip_path_out}")
-
     if cleanup_source:
         cleanup_files(output_gpkg)
-        cleanup_files(temp_dir)
 
     return zip_path_out
 
@@ -179,7 +175,7 @@ def cleanup_files(*file_paths: str) -> None:
             except OSError as e:
                 logging.warning(f"Failed to clean up {file_path}: {e}")
 
-def process_file_conversion(zip_path: str, language: str, geo_type: str, crs: str, conversion_id: str) -> None:
+def convert_file(zip_path: str, language: str, geo_type: str, crs: str, conversion_id: str) -> None:
     """Process file conversion from ZIP/TSV to GeoPackage."""
     
     output_gpkg = f'{conversion_id}.gpkg'
@@ -242,8 +238,11 @@ def process_file_conversion(zip_path: str, language: str, geo_type: str, crs: st
         update_conversion_status(conversion_id, "failed", error=str(e))
         cleanup_files(output_gpkg)
 
-def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_type: str) -> None:
-    """Process a single partition and append it to a GeoPackage file."""
+def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_type: str, append: bool = True) -> bool:
+    """Process a single partition and write it to a GeoPackage file.
+
+    Returns True if data was written (non-empty after filtering), else False.
+    """
     gdf = gpd.GeoDataFrame(
         partition.compute(), 
         geometry="geometry", 
@@ -259,7 +258,7 @@ def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_ty
 
     if len(gdf) == 0:
         logging.warning("No valid geometries found in partition, skipping...")
-        return
+        return False
 
     if not isinstance(gdf, gpd.GeoDataFrame):
         logging.warning("Partition was not a GeoDataFrame. Converting it to GeoDataFrame...")
@@ -275,8 +274,9 @@ def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_ty
             driver="GPKG", 
             encoding='utf8', 
             promote_to_multi=True, 
-            append=True
+        append=append
         )
+    return True
 
 def read_tsv_as_dask_dataframe(file_path: str, language: str, wkt_column: str) -> dd.DataFrame:
     """Read a TSV file into a Dask DataFrame and process WKT geometries."""
@@ -302,18 +302,13 @@ def read_tsv_as_dask_dataframe(file_path: str, language: str, wkt_column: str) -
         converters=converters
     )
 
-    initial_count = len(ddf)
-    logging.debug(f"Read {initial_count} occurrences from {file_path}")
+    logging.debug(f"Read occurrences from {file_path}")
 
     ddf = ddf[ddf[wkt_column].notnull()]  # Remove NA values #TODO: Maybe better to keep them in the future
     ddf = ddf[ddf[wkt_column].str.strip() != ""]  # Remove empty strings and whitespace
-    
-    filtered_count = len(ddf)
-    removed_count = initial_count - filtered_count
-    
-    if removed_count > 0:
-        logging.debug(f"Filtered out {removed_count:,} rows with empty geometry values")
-    
+
+    logging.debug(f"Removed rows with null or empty WKT in column {wkt_column}")
+
     ddf["geometry"] = ddf[wkt_column].map(safely_parse_wkt)
     ddf = ddf.set_geometry("geometry")
     ddf["geometry"] = ddf["geometry"].apply(normalize_geometry_collection)
@@ -345,9 +340,18 @@ def process_tsv_data(
         delayed_partitions = ddf.to_delayed()
         total_partitions = len(delayed_partitions)
 
+        created = False
         for idx, partition in enumerate(delayed_partitions):
             logging.debug(f"Writing partition {idx + 1} / {total_partitions}...")
-            write_partition_to_geopackage(partition, crs, output_gpkg, geom_type)
+            wrote = write_partition_to_geopackage(
+                partition,
+                crs,
+                output_gpkg,
+                geom_type,
+                append=created
+            )
+            if wrote and not created:
+                created = True
 
     finally:
         logging.debug(f"Finished processing occurrences.txt -> {output_gpkg}")

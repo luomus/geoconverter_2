@@ -72,7 +72,7 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert/myfile/tech/footprint/wgs84' \
 
 **Example Request:**
 ```bash
-curl -X 'GET' 'http://127.0.0.1:8000/convert/HBF.12345/gpkg/footprint/wgs84?personToken=your_token_here' \
+curl -X 'GET' 'http://127.0.0.1:8000/convert/HBF.12345/fi/footprint/wgs84?personToken=your_token_here' \
     -H "Accept: application/json"
 ```
 
@@ -129,7 +129,7 @@ cd geoconverter_2
 
 3. Test the API:
    ```bash
-   curl -X 'POST' 'http://127.0.0.1:8000/convert/myfile/gpkg/footprint/euref' \
+   curl -X 'POST' 'http://127.0.0.1:8000/convert/myfile/fi/footprint/euref' \
        -H "Accept: application/json" \
        -H "Content-Type: multipart/form-data" \
        -F "file=@test_data/HBF.12912.zip"

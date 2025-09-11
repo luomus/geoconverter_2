@@ -8,24 +8,24 @@ identifiedBy	Määrittäjä	Identified By	object
 taxonConceptID	Taksonikäsitteen tunniste	Taxon Concept ID	object
 scientificName	Tieteellinen nimi	Scientific Name	object
 scientificNameAuthorship	Auktori	Scientific Name Authorship	object
-taxonRank	Taksonominen taso	Taxon Rank	object
-kingdom	Kunta	Kingdom	object
+taxonRank	Taksonominen taso	Taxon Rank	category
+kingdom	Kunta	Kingdom	category
 class	Luokka	Class	object
 order	Lahko	Order	object
 family	Heimo	Family	object
-informalTaxonGroup	Eliöryhmä	Informal Taxon Group	object
+informalTaxonGroup	Eliöryhmä	Informal Taxon Group	category
 vernacularName	Yleiskielinen nimi (suomi)	Vernacular Name (Finnish)	object
 vernacularNameSwedish	Yleiskielinen nimi (ruotsi)	Vernacular Name (Swedish)	object
 redListStatusFinland	Uhanalaisuus Suomessa	Red List Status (Finland)	object
-lajiturvaStatus	Lajiturva -luokittelu	Lajiturva Status	object
+lajiturvaStatus	Lajiturva -luokittelu	Lajiturva Status	category
 regulatoryStatuses	Hallinnollinen asema	Regulatory Statuses	category
 taxonPreferredHabitat	Lajin elinympäristö	Taxon Preferred Habitat	object
 habitat	Havainnon habitaatti	Occurrence Habitat	object
 isSensitiveTaxon	Sensitiivinen laji	Is Sensitive Taxon	bool
-dataGeneralizations	Karkeistustaso	Data Generalizations	object
-informationWitheld	Karkeistuksen syyt	Information Withheld	object
+dataGeneralizations	Karkeistustaso	Data Generalizations	category
+informationWithheld	Karkeistuksen syyt	Information Withheld	category
 datasetCurationLevel	Aineiston laatu	Dataset Curation Level	category
-identificationVerificationStatus	Havainnon luotettavuus	Identification Verification Status	object
+identificationVerificationStatus	Havainnon luotettavuus	Identification Verification Status	category
 qualityControl	Laadunvalvontatagit	Quality Control Tags	object
 datasetID	Aineiston/Kokoelman tunniste	Dataset ID	object
 datasetName	Aineisto/Kokoelma	Dataset Name	object
@@ -34,13 +34,13 @@ sourceName	Lähdejärjestelmä	Source Name	object
 originatingSource	Alkuperäinen tietolähde	Originating Source	object
 eventDate	Havaintoaika	Event Date	object
 countryCode	Maa	Country	object
-biogeographicalProvince	Eliömaakunta	Biogeographical Province	object
+biogeographicalProvince	Eliömaakunta	Biogeographical Province	category
 municipality	Kunta	Municipality	object
 verbatimLocality	Ilmoitetut paikannimet	Verbatim Locality	object
 locationID	Seurantapaikan tunniste	Site ID	object
 locationType	Seurantapaikan tyyppi	Site Type	category
 locationStatus	Seurantapaikan tila	Site Status	category
-basisOfRecord	Havainnointitapa	Basis of Record	object
+basisOfRecord	Havainnointitapa	Basis of Record	category
 lifeStage	Elinvaihe	Life Stage	category
 sex	Sukupuoli	Sex	category
 femaleIndividualCount	Naaraiden yksilömäärä	Female Individual Count	int
@@ -51,7 +51,7 @@ individualCount	Tulkittu yksilömäärä (min)	Interpreted Individual Count (min
 pairCount	Parimäärä	Pair Count	int
 isMigrating	Muuttaja	Migration Status	bool
 isBreedingSite	Lisääntymispaikka	Breeding Site	bool
-invasiveTaxonManagementAction	Vieraslajin torjunta	Invasive Taxon Management Action	object
+invasiveTaxonManagementAction	Vieraslajin torjunta	Invasive Taxon Management Action	category
 atlasCode	Pesimävarmuusindeksi	Breeding Bird Atlas Code	category
 atlasClass	Pesimävarmuusluokka	Breeding Bird Atlas Class	category
 dynamicProperties	Lisämuuttujat	Additional Attributes	object

@@ -2,4 +2,7 @@
 data/
 logs/
 run/
+out/
+bin/uvicorn_start
+bin/update
 .venv

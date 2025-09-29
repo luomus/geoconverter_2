@@ -125,7 +125,7 @@ def create_output_zip(zip_path: str, output_gpkg: str, conversion_id: str, clean
     Create a ZIP file containing the GPKG and all other files from input ZIP.
     """
     logging.debug(f"Creating output ZIP: {zip_path} with GPKG: {output_gpkg}")
-    zip_path_out = conversion_id + '.zip'
+    zip_path_out = app_settings.OUTPUT_PATH + conversion_id + '.zip'
 
     with ZipFile(zip_path, "r") as zin, ZipFile(zip_path_out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
         for zi in zin.infolist():
@@ -178,7 +178,7 @@ def cleanup_files(*file_paths: str) -> None:
 def convert_file(zip_path: str, language: str, geo_type: str, crs: str, conversion_id: str) -> None:
     """Process file conversion from ZIP/TSV to GeoPackage."""
     
-    output_gpkg = f'{conversion_id}.gpkg'
+    output_gpkg = app_settings.OUTPUT_PATH + f'{conversion_id}.gpkg'
     wkt_column = GEOMETRY_LANG_MAPPING[language]
 
 
@@ -212,7 +212,7 @@ def convert_file(zip_path: str, language: str, geo_type: str, crs: str, conversi
             pass
         
         if zip_path.endswith(".zip"):
-            final_output = f"{conversion_id}.zip"
+            final_output = app_settings.OUTPUT_PATH + f"{conversion_id}.zip"
         else:
             final_output = output_gpkg
             

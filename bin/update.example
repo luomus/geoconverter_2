@@ -1,0 +1,11 @@
+#!/bin/bash
+
+DIR=/home/
+PROCESS_NAME=geoconverter
+BRANCH=main
+
+cd $DIR
+git checkout $BRANCH
+git pull
+restorecon -Rv $DIR
+systemctl restart $PROCESS_NAME.service

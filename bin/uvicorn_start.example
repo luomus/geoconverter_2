@@ -1,0 +1,14 @@
+#!/bin/bash
+
+DIR=/home/
+VENV=$DIR/.venv/bin/activate
+BIND=$DIR/run/uvicorn.sock
+LOG_LEVEL=error
+
+cd $DIR
+source $VENV
+cd src
+
+exec uvicorn main:app \
+--uds=$BIND \
+--log-level=$LOG_LEVEL

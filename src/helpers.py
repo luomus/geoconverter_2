@@ -10,6 +10,7 @@ from typing import Optional, Any, Dict
 import numpy as np
 import geopandas as gpd
 import settings
+import dask.dataframe as dd
 
 app_settings = settings.Settings()
 log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
@@ -50,6 +51,16 @@ def safely_parse_wkt(wkt_string: str) -> Optional[Any]:
         return None
     
 
+def process_wkt_geometry(ddf: dd.DataFrame, wkt_column: str) -> dd.DataFrame:
+    ddf = ddf[ddf[wkt_column].notnull()]  # Remove NA values #TODO: Maybe better to keep them in the future
+    ddf = ddf[ddf[wkt_column].str.strip() != ""]  # Remove empty strings and whitespace
+
+    logging.debug(f"Removed rows with null or empty WKT in column {wkt_column}")
+
+    ddf["geometry"] = ddf[wkt_column].map(safely_parse_wkt)
+    ddf = ddf.set_geometry("geometry")
+    ddf["geometry"] = ddf["geometry"].apply(normalize_geometry_collection)
+    return ddf
 
 def convert_boolean_value(value: str) -> Optional[bool]:
     """Convert string boolean values to Python boolean."""

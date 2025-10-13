@@ -59,8 +59,6 @@ georeferenceSources	Koordinaattien lähde	Coordinate Source	category
 isStateLand	Valtion maalla	State Land	bool
 coordinateAccuracy	Koordinaattien tarkkuus (m)	Coordinate Accuracy (m)	int
 footprintWKT	WGS84 geometria	Footprint WKT	object
-decimalLatitude	WGS84 leveys	Decimal Latitude	object
-decimalLongitude	WGS84 pituus	Decimal Longitude	object
 gridCellYKJ	YKJ kymppiruutu	YKJ 10km Grid Cell	object
 occurrenceRemarks	Lisätiedot havainnost	Occurrence Remarks	object
 eventRemarks	Lisätiedot keruutapahtumasta	Event Remarks	object

@@ -302,16 +302,7 @@ def read_tsv_as_dask_dataframe(file_path: str, language: str, wkt_column: str) -
         converters=converters
     )
 
-    logging.debug(f"Read occurrences from {file_path}")
-
-    ddf = ddf[ddf[wkt_column].notnull()]  # Remove NA values #TODO: Maybe better to keep them in the future
-    ddf = ddf[ddf[wkt_column].str.strip() != ""]  # Remove empty strings and whitespace
-
-    logging.debug(f"Removed rows with null or empty WKT in column {wkt_column}")
-
-    ddf["geometry"] = ddf[wkt_column].map(safely_parse_wkt)
-    ddf = ddf.set_geometry("geometry")
-    ddf["geometry"] = ddf["geometry"].apply(normalize_geometry_collection)
+    ddf = process_wkt_geometry(ddf, wkt_column)
 
     return ddf
 
@@ -352,6 +343,10 @@ def process_tsv_data(
             )
             if wrote and not created:
                 created = True
+
+        # Check if GPKG was actually created
+        if not created or not os.path.exists(output_gpkg):
+            raise ValueError(f"No valid geometries found in the data. GPKG file could not be created.")
 
     finally:
         logging.debug(f"Finished processing occurrences.txt -> {output_gpkg}")

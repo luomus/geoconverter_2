@@ -7,6 +7,12 @@ import pandas as pd
 from fiona import listlayers
 import settings
 
+CRS_MAPPING = {
+    "epsg:3067": "ETRS-TM35FIN",
+    "epsg:4326": "wgs84",
+    "epsg:2393": "ykj"
+}
+
 app_settings = settings.Settings()
 log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
 
@@ -53,8 +59,8 @@ def gis_to_table(gis_file):
     if gdf is None or gdf.empty:
         raise RuntimeError("No features found in the GIS file.")
     
-    # Store CRS information
-    crs_info = str(gdf.crs) if gdf.crs is not None else "Unknown"
+    # Store CRS information using mapping function
+    crs_info = CRS_MAPPING.get(str(gdf.crs).lower(), "Not supported (use YKJ, ETRS-TM35FIN or WGS84)")
     
     # Handle geometry as WKT
     gdf["geometry_wkt"] = gdf.geometry.to_wkt()

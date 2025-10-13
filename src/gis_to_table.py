@@ -63,7 +63,7 @@ def gis_to_table(gis_file):
     logging.info(f"Converted {len(df)} records in {gdf.crs} to a table successfully.")
 
     # Save DataFrame as CSV
-    csv_path = app_settings.OUTPUT_PATH + os.path.splitext(gis_file)[0] + ".csv"
+    csv_path = os.path.splitext(gis_file)[0] + ".csv"
     df.to_csv(csv_path, index=False)
     logging.info(f"CONVERSION COMPLETED and: {csv_path} is ready. Size: {os.path.getsize(csv_path)} bytes")
 

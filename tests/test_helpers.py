@@ -13,6 +13,8 @@ import tempfile
 import os
 import sys
 from unittest.mock import MagicMock
+from unittest.mock import patch
+import dask.dataframe as dd
 
 class MockSettings:
     LOGGING = "INFO"

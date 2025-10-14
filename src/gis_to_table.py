@@ -1,94 +1,95 @@
 import os
 import logging
-import tempfile
-from zipfile import ZipFile
+import warnings
 import geopandas as gpd
 import pandas as pd
 from fiona import listlayers
 import settings
 
+os.environ["OGR_FORCE_ASCII"] = "YES"
+
+# Suppress pyogrio warnings
+warnings.filterwarnings("ignore", message=".*does not support open option.*")
+warnings.filterwarnings("ignore", message="More than one layer found.*")
+
 CRS_MAPPING = {
-    "epsg:3067": "ETRS-TM35FIN",
+    "epsg:3067": "ETRS-TM35FIN", 
     "epsg:4326": "wgs84",
     "epsg:2393": "ykj"
 }
 
+# Setup logging
 app_settings = settings.Settings()
 log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
+logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
 
-logging.basicConfig(
-    level=log_level, 
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+def read_file_with_encoding(file_path, layer=None):
+    """Read GIS file with fallback encoding options."""
+    encodings = [None, 'UTF-8', 'LATIN1', 'CP1252']
+    
+    for encoding in encodings:
+        try:
+            gdf = gpd.read_file(file_path, layer=layer, engine='pyogrio', 
+                              encoding=encoding, use_arrow=False)
+            logging.debug(f"Read file with {encoding or 'default'} encoding")
+            return gdf
+        except (UnicodeDecodeError, UnicodeError):
+            continue
+        except Exception as e:
+            if encoding is None:
+                logging.warning(f"Failed with default encoding: {e}. Trying other encodings.")
+            raise
+    
+    raise RuntimeError("Failed to read file with any encoding")
+
+
+def read_multilayer_file(file_path):
+    """Read and combine all layers from a multi-layer file."""
+    layers = listlayers(file_path)
+    layer_gdfs = []
+    
+    for layer in layers:
+        try:
+            gdf = read_file_with_encoding(file_path, layer=layer)
+            if not gdf.empty:
+                layer_gdfs.append(gdf)
+        except Exception as e:
+            logging.warning(f"Failed to read layer '{layer}': {e}")
+    
+    if not layer_gdfs:
+        raise RuntimeError("No readable layers found")
+    
+    return pd.concat(layer_gdfs, ignore_index=True)
+
 
 def gis_to_table(gis_file):
-    """
-    Converts a GIS file (Shapefile, GeoPackage, GeoJSON) to a CSV file
-    with geometry stored as WKT in 'geometry_wkt' column.
-    """
-    SUPPORTED_EXTENSIONS = {'.shp', '.geojson', '.json', '.gpkg', '.kml', '.gml'}
-
-    ext = os.path.splitext(gis_file)[1].lower()
-    gdf = None
-
-    if ext == ".zip":
-        logging.debug(f"ZIP archive detected: {gis_file}")
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with ZipFile(gis_file, 'r') as archive:
-                archive.extractall(tmpdir)
-
-            found_files = []
-            for root, _, files in os.walk(tmpdir):
-                for fname in files:
-                    fext = os.path.splitext(fname)[1].lower()
-                    if fext in SUPPORTED_EXTENSIONS:
-                        found_files.append(os.path.join(root, fname))
-
-            if not found_files:
-                raise RuntimeError("No supported GIS files found in ZIP archive.")
-
-            if len(found_files) > 1:
-                logging.warning(f"Multiple GIS files found in ZIP. Using the first one: {found_files[0]}")
-            else:
-                logging.debug(f"Found supported GIS file: {found_files[0]}")
-
-            gdf = read_gis_file(found_files[0])
+    """Converts a GIS file to CSV with geometry as WKT."""
+    logging.debug(f"Converting {gis_file}")
+    
+    # Handle multi-layer files
+    if os.path.splitext(gis_file)[1].lower() in ['.gpkg', '.gpx']:
+        gdf = read_multilayer_file(gis_file)
     else:
-        gdf = read_gis_file(gis_file)
+        gdf = read_file_with_encoding(gis_file)
 
     if gdf is None or gdf.empty:
-        raise RuntimeError("No features found in the GIS file.")
+        raise RuntimeError("No features found in the GIS file")
     
-    # Store CRS information using mapping function
-    crs_info = CRS_MAPPING.get(str(gdf.crs).lower(), "Not supported (use YKJ, ETRS-TM35FIN or WGS84)")
-    
-    # Handle geometry as WKT
+    # Convert to table format
+    crs_info = CRS_MAPPING.get(str(gdf.crs).lower(), "Not supported")
     gdf["geometry_wkt"] = gdf.geometry.to_wkt()
-    gdf["crs"] = crs_info 
+    gdf["crs"] = crs_info
     df = gdf.drop(columns=gdf.geometry.name)
-    logging.info(f"Converted {len(df)} records in {gdf.crs} to a table successfully.")
-
-    # Save DataFrame as CSV
+    
+    # Save as CSV
     csv_path = os.path.splitext(gis_file)[0] + ".csv"
     df.to_csv(csv_path, index=False)
-    logging.info(f"CONVERSION COMPLETED and: {csv_path} is ready. Size: {os.path.getsize(csv_path)} bytes")
 
+    logging.debug(f"Converted {len(df)} records to {csv_path}")
     return csv_path
 
-def read_gis_file(path):
-    """
-    Helper function to load GIS file using GeoPandas, handling multipage GPKG.
-    """
-    ext = os.path.splitext(path)[1].lower()
-    if ext == ".gpkg":
-        layers = listlayers(path)
-        logging.debug(f"GeoPackage layers found: {layers}")
-        gdfs = [gpd.read_file(path, layer=layer, engine='pyogrio') for layer in layers]
-        return pd.concat(gdfs, ignore_index=True)
-    else:
-        return gpd.read_file(path)
-    
+
 if __name__ == "__main__":
-    logging.info("Starting process locally...")
+    logging.debug("Starting process locally...")
     
-    #gis_to_table('test.gpkg)
+    gis_to_table("HBF.109592.gpkg")

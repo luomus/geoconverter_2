@@ -13,9 +13,12 @@ import geopandas as gpd
 from unittest.mock import MagicMock, patch
 from shapely.geometry import Point
 from zipfile import ZipFile
+import dask.dataframe as dd
+
 
 class MockSettings:
     LOGGING = "INFO"
+    OUTPUT_PATH = "./"
 
 mock_settings = MagicMock()
 mock_settings.Settings.return_value = MockSettings()
@@ -35,6 +38,7 @@ from table_to_gpkg import (
     convert_file,
     write_partition_to_geopackage,
     read_tsv_as_dask_dataframe,
+    process_wkt_geometry,
     process_tsv_data,
     create_output_zip,
     LANGUAGE_MAPPING,
@@ -123,7 +127,7 @@ def test_create_output_zip(tmp_path):
         
         # Verify output ZIP was created
         assert os.path.exists(result_zip)
-        assert result_zip == f"{conversion_id}.zip"
+        assert result_zip == f"./{conversion_id}.zip"
         
         # Verify contents of output ZIP
         with ZipFile(result_zip, "r") as zf:
@@ -317,7 +321,7 @@ def test_read_tsv_as_dask_dataframe(
     # Verify helper functions were called
     mock_column_types.assert_called_once_with(language, dtypes_path='lookup_table.tsv')
     
-    # Verify the result is the same DataFrame
+    # Verify the result is the processed DataFrame
     assert result == mock_df
 
 
@@ -332,8 +336,10 @@ def test_read_tsv_as_dask_dataframe(
 @patch("table_to_gpkg.create_output_zip")
 @patch("table_to_gpkg.write_partition_to_geopackage")
 @patch("table_to_gpkg.read_tsv_as_dask_dataframe")
+@patch("table_to_gpkg.os.remove")
+@patch("table_to_gpkg.os.path.exists")
 def test_process_tsv_data(
-    mock_read_tsv, mock_write_partition, mock_create_zip, mock_cleanup, 
+    mock_exists, mock_remove, mock_read_tsv, mock_write_partition, mock_create_zip, mock_cleanup, 
     tmp_path, cleanup_temp, compress_output
 ):
     """Test process_tsv_data function with different configurations."""
@@ -351,6 +357,22 @@ def test_process_tsv_data(
     mock_ddf = MagicMock()
     mock_ddf.to_delayed.return_value = [mock_partition]
     mock_read_tsv.return_value = mock_ddf
+    
+    # Configure mocks to simulate successful processing
+    mock_write_partition.return_value = True  # Simulate successful write
+    
+    # Configure os.path.exists to simulate the workflow:
+    # 1. First call: check if GPKG exists for deletion (False)
+    # 2. Second call: check if GPKG was created successfully (True)
+    call_count = [0]  # Use list to allow modification in nested function
+    
+    def exists_side_effect(path):
+        if path == "test123.gpkg":
+            call_count[0] += 1
+            return call_count[0] > 1
+        return False
+    
+    mock_exists.side_effect = exists_side_effect
     
     # Call the function
     process_tsv_data(

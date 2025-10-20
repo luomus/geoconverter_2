@@ -209,6 +209,7 @@ def convert_file(zip_path: str, language: str, geo_type: str, crs: str, conversi
             )
         else:
             # Process standalone TSV file
+            logging.warning("Processing standalone TSV files is not implemented yet.")
             pass
         
         if zip_path.endswith(".zip"):
@@ -354,5 +355,5 @@ def process_tsv_data(
             create_output_zip(zip_path, output_gpkg, conversion_id, cleanup_source=True)
 
         if cleanup_temp:
-            cleanup_files(zip_path)
+            cleanup_files(temp_file_path)
 

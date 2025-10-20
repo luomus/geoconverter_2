@@ -35,7 +35,7 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 
 ### `/convert/{id}/{lang}/{geo}/{crs}` (POST)
 
-**Description:** Converts a ZIP file containing TSV data into a GeoPackage. Should have the same schema and content as downloadable files from FinBIF.
+**Description:** Converts a ZIP file containing TSV data into a zipped GeoPackage. The TSV file should have the same schema and content as a downloadable file from FinBIF.
 
 **Path parameters:**
 - `id`: Name for the converted file
@@ -48,10 +48,10 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 
 **Example Request:**
 ```bash
-curl -X 'POST' 'http://127.0.0.1:8000/convert/myfile/tech/footprint/wgs84' \
+curl -X 'POST' 'http://127.0.0.1:8000/convert/HBF.12345/tech/footprint/wgs84' \
     -H "Accept: application/json" \
     -H "Content-Type: multipart/form-data" \
-    -F "file=@input.zip"
+    -F "file=@HBF.12345.zip"
 ```
 
 ### `/convert/{id}/{lang}/{geo}/{crs}` (GET)
@@ -107,8 +107,8 @@ curl -X 'GET' 'http://127.0.0.1:8000/status/HBF.12345' \
 
 **Example Request:**
 ```bash
-curl -X 'GET' 'http://127.0.0.1:8000/output/myfile?personToken=your_token_here' \
-    -o converted_output.zip
+curl -X 'GET' 'http://127.0.0.1:8000/output/HBF.12345?personToken=your_token_here' \
+    -o converted_HBF.12345.zip
 ```
 
 ## Installation and Usage
@@ -129,10 +129,10 @@ cd geoconverter_2
 
 3. Test the API:
    ```bash
-   curl -X 'POST' 'http://127.0.0.1:8000/convert/myfile/fi/footprint/euref' \
+   curl -X 'POST' 'http://127.0.0.1:8000/convert/HBF.12345/fi/footprint/euref' \
        -H "Accept: application/json" \
        -H "Content-Type: multipart/form-data" \
-       -F "file=@test_data/HBF.12912.zip"
+       -F "file=@test_data/HBF.12345.zip"
    ```
 
 ## How It Works
@@ -149,7 +149,7 @@ cd geoconverter_2
      - **Bbox**: Converts to bounding box polygons
    - Handles coordinate system transformations (WGS84 ↔ EUREF-FIN)
    - Processes data in partitions for memory efficiency
-3. **Output**: Writes processed data to GeoPackage format using PyOGRIO
+3. **Output**: Writes processed data to a Zipped GeoPackage format using PyOGRIO. Other files in the zip folder remains the same.
 
 ### GIS to Table Conversion
 

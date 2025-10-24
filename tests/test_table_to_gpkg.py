@@ -63,7 +63,7 @@ def test_handle_conversion_request(
     mock_convert, file_size, expected_status, expect_background, tmp_path
 ):
     # Create temp file with desired size
-    test_file = tmp_path / "test.zip"
+    test_file = tmp_path / "test123.zip"
     test_file.write_bytes(b"0" * file_size)
 
     background_tasks = MagicMock()

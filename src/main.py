@@ -97,9 +97,8 @@ async def convert_with_id(
     zip_path = get_settings().FILE_PATH + id + ".zip"
     return handle_conversion_request(id, zip_path, lang, geo, crs, background_tasks, False)
 
-@app.post("/convert/{id}/{lang}/{geo}/{crs}")
+@app.post("/convert/{lang}/{geo}/{crs}")
 async def convert_with_file(
-    id: str,
     lang: Literal["fi", "en", "tech"],
     geo: Literal["bbox", "point", "footprint"],
     crs: Literal["euref","wgs84"],
@@ -109,6 +108,8 @@ async def convert_with_file(
     """API endpoint to receive ZIP TSV file and return a GeoPackage."""
 
     logging.info(f"Received file: {file.filename}, language: {lang}, geo: {geo}, crs: {crs}")
+
+    id = os.path.splitext(file.filename)[0]
 
     # Create a temporary file to store the uploaded zip
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
@@ -127,6 +128,11 @@ async def get_status(id: str):
             raise HTTPException(status_code=404, detail="Conversion ID not found.")
         status = conversion_status[id]
         return {"status": status["status"]}
+    
+@app.get("/health")
+async def health_check():
+    """ Health check endpoint to verify the service is running. TODO: extend checks. """
+    return {"status": "ok"}
 
 @app.get("/output/{id}")
 async def get_output(id: str, personToken: Optional[str] = None):

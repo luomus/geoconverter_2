@@ -33,12 +33,11 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 
 *Note: The `Accept` header specifies the expected response format, while `Content-Type` is automatically set by curl when using `-F` for file uploads but is included here for clarity.*
 
-### `/convert/{id}/{lang}/{geo}/{crs}` (POST)
+### `/convert/{lang}/{geo}/{crs}` (POST)
 
 **Description:** Converts a ZIP file containing TSV data into a zipped GeoPackage. The TSV file should have the same schema and content as a downloadable file from FinBIF.
 
 **Path parameters:**
-- `id`: Name for the converted file
 - `lang`: Language of the headers - one of `fi`, `en`, or `tech`
 - `geo`: Geometry type - one of `footprint`, `bbox`, or `point`
 - `crs`: Coordinate Reference System (CRS) for output - either `wgs84` or `euref`
@@ -111,6 +110,18 @@ curl -X 'GET' 'http://127.0.0.1:8000/output/HBF.12345?personToken=your_token_her
     -o converted_HBF.12345.zip
 ```
 
+### `/health` (GET)
+
+**Description:** Health check endpoint to verify the service is running
+
+**Response:**
+- Returns service status
+
+**Example Request:**
+```bash
+curl http://127.0.0.1:8000/health
+```
+
 ## Installation and Usage
 
 ### Docker Deployment (Recommended)
@@ -129,10 +140,15 @@ cd geoconverter_2
 
 3. Test the API:
    ```bash
-   curl -X 'POST' 'http://127.0.0.1:8000/convert/HBF.12345/fi/footprint/euref' \
+   curl -X 'POST' 'http://127.0.0.1:8000/convert/fi/footprint/euref' \
        -H "Accept: application/json" \
        -H "Content-Type: multipart/form-data" \
        -F "file=@test_data/HBF.12345.zip"
+   ```
+
+4. Check service health:
+   ```bash
+   curl http://127.0.0.1:8000/health
    ```
 
 ## How It Works
@@ -175,3 +191,7 @@ See `requirements.txt` for complete dependency list. Key dependencies include:
 - PyOGRIO 0.7+
 - Pandas 2.3+
 - Pydantic Settings 2.9+
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

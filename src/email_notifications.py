@@ -51,7 +51,7 @@ def send_simple_email(subject: str, message: str) -> bool:
         logging.error(f"Failed to send email: {e}")
         return False
 
-def notify_failure(error_message: str, conversion_id: str = ""):
+def notify_failure(error_message: str, conversion_id: str = "") -> bool:
     """Send notification when something fails."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     subject = "Geoconverter Error"
@@ -71,4 +71,4 @@ def notify_failure(error_message: str, conversion_id: str = ""):
         Please check the application logs for more details.
     """
     
-    send_simple_email(subject, message)
+    return send_simple_email(subject, message)

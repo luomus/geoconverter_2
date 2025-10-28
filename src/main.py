@@ -265,8 +265,11 @@ async def test_email():
     """ Test email notification system. """
     try:
         logging.info("Testing email notification system...")
-        notify_failure("This is a test error message for email notification.", "TEST_ID")
-        return {"status": "Test email sent successfully"}
+        success = notify_failure("This is a test error message for email notification.", "TEST_ID")
+        if success:
+            return {"status": "Test email sent successfully"}
+        else:
+            raise HTTPException(status_code=500, detail="Email sending failed - check logs for details")
     except Exception as e:
         logging.error(f"Test email failed: {e}")
         raise HTTPException(status_code=500, detail=f"Email sending failed: {str(e)}")

@@ -13,6 +13,7 @@ import logging
 from typing import Literal, Optional
 import settings
 from gis_to_table import gis_to_table
+from email_notifications import notify_failure
 
 # Pydantic models for API responses
 class StatusResponse(BaseModel):
@@ -102,6 +103,10 @@ async def convert_gis_to_table(
 
     except Exception as e:
         logging.error(f"GIS-to-table conversion failed: {e}")
+        
+        # Send email notification for API failure
+        notify_failure(f"API Error in /convert-to-table: {str(e)}")
+        
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/convert/{id}/{lang}/{geo}/{crs}",
@@ -246,3 +251,22 @@ async def cleanup_old_files():
                         del conversion_status[id]
     import threading
     threading.Thread(target=cleanup, daemon=True).start()
+
+@app.post("/test-email",
+    summary="Test email notification system",
+    description="Send a test email notification to verify the email system is working",
+    tags=["System"],
+    responses={
+        200: {"description": "Test email sent successfully"},
+        500: {"description": "Email sending failed"}
+    }
+)
+async def test_email():
+    """ Test email notification system. """
+    try:
+        logging.info("Testing email notification system...")
+        notify_failure("This is a test error message for email notification.", "TEST_ID")
+        return {"status": "Test email sent successfully"}
+    except Exception as e:
+        logging.error(f"Test email failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Email sending failed: {str(e)}")

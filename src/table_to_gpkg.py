@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse
 from pyogrio import write_dataframe
 from helpers import *
 import settings
+from email_notifications import notify_failure
 
 
 import warnings
@@ -239,6 +240,10 @@ def convert_file(zip_path: str, language: str, geo_type: str, crs: str, conversi
         
     except Exception as e:
         logging.error(f"Error during conversion: {e}")
+        
+        # Send email notification for conversion failure
+        notify_failure(str(e), conversion_id)
+        
         update_conversion_status(conversion_id, "failed", error=str(e))
         cleanup_files(app_settings.OUTPUT_PATH + f'{conversion_id}.gpkg')
 

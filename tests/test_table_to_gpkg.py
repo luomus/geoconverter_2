@@ -41,6 +41,7 @@ from table_to_gpkg import (
     process_wkt_geometry,
     process_tsv_data,
     create_output_zip,
+    _extract_and_process_zip,
     LANGUAGE_MAPPING,
     GEOMETRY_LANG_MAPPING,
     CRS_MAPPING,
@@ -62,6 +63,9 @@ from table_to_gpkg import (
 def test_handle_conversion_request(
     mock_convert, file_size, expected_status, expect_background, tmp_path
 ):
+    # Clear conversion status before each test to avoid conflicts
+    conversion_status.clear()
+    
     # Create temp file with desired size
     test_file = tmp_path / "test123.zip"
     test_file.write_bytes(b"0" * file_size)
@@ -88,6 +92,22 @@ def test_handle_conversion_request(
     else:
         mock_convert.assert_called_once()
         background_tasks.add_task.assert_not_called()
+
+
+@patch("table_to_gpkg.process_tsv_data")
+def test_extract_and_process_zip(mock_process_tsv, tmp_path):
+    """Test _extract_and_process_zip helper function."""
+    # Create test ZIP with occurrences.txt
+    test_zip = tmp_path / "test.zip"
+    with ZipFile(test_zip, "w") as zf:
+        zf.writestr("occurrences.txt", "id\tname\n1\ttest\n")
+    
+    result = _extract_and_process_zip(
+        str(test_zip), "test123", "en", "point", "EPSG:4326", "Footprint WKT"
+    )
+    
+    mock_process_tsv.assert_called_once()
+    assert result == "./test123.zip"
 
 def test_create_output_zip(tmp_path):
     """Test create_output_zip function with real file operations."""
@@ -187,35 +207,36 @@ def _create_fake_zip(tmp_path):
 
 @patch("table_to_gpkg.os.path.exists")
 @patch("table_to_gpkg.os.path.getsize")
-@patch("table_to_gpkg.process_tsv_data")
+@patch("table_to_gpkg._extract_and_process_zip")
 @patch("table_to_gpkg.update_conversion_status")
-def test_convert_file_success(mock_update_status, mock_process_tsv, mock_getsize, mock_exists, tmp_path):
+def test_convert_file_success(mock_update_status, mock_extract_process, mock_getsize, mock_exists, tmp_path):
     """Test convert_file with success scenario."""
     conversion_id = "test123"
     zip_path = _create_fake_zip(tmp_path)
     
     mock_exists.return_value = True
     mock_getsize.return_value = 1024
+    mock_extract_process.return_value = "./test123.zip"
 
     convert_file(str(zip_path), "en", "point", "wgs84", conversion_id)
 
-    mock_process_tsv.assert_called_once()
+    mock_extract_process.assert_called_once()
     
     final_call = mock_update_status.call_args_list[-1]
     assert final_call[0][0] == conversion_id
     assert final_call[0][1] == "completed"
 
 
-@patch("table_to_gpkg.process_tsv_data")
+@patch("table_to_gpkg._extract_and_process_zip")
 @patch("table_to_gpkg.update_conversion_status")
 @patch("table_to_gpkg.cleanup_files")
-def test_convert_file_failure(mock_cleanup, mock_update_status, mock_process_tsv, tmp_path):
+def test_convert_file_failure(mock_cleanup, mock_update_status, mock_extract_process, tmp_path):
     """Test convert_file handles failures correctly."""
     conversion_id = "test456"
     zip_path = _create_fake_zip(tmp_path)
     
-    # Make process_tsv_data raise an exception
-    mock_process_tsv.side_effect = Exception("Processing failed")
+    # Make _extract_and_process_zip raise an exception
+    mock_extract_process.side_effect = Exception("Processing failed")
 
     convert_file(str(zip_path), "en", "point", "wgs84", conversion_id)
 

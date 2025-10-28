@@ -5,7 +5,7 @@ import zipfile
 import shutil
 from threading import Lock
 from time import time
-from typing import Dict, Union
+from typing import Dict, Union, Optional
 from zipfile import ZipFile
 import dask
 import dask.dataframe as dd
@@ -25,18 +25,7 @@ pd.options.mode.use_inf_as_na = True
 
 dask_config.set(scheduler="threads", num_workers=os.cpu_count())
 
-app_settings = settings.Settings()
-log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
-
-logging.basicConfig(
-    level=log_level, 
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-
-# Thread-safe locks
-write_lock = Lock()
-status_lock = Lock()
-
+# Configuration mappings
 CRS_MAPPING = {
     "euref": "EPSG:3067",
     "wgs84": "EPSG:4326"
@@ -60,12 +49,22 @@ GEOMETRY_LANG_MAPPING = {
     "tech": "footprintWKT"
 }
 
+# Settings and logging
+app_settings = settings.Settings()
+log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
+
+logging.basicConfig(level=log_level, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Thread-safe locks
+write_lock = Lock()
+status_lock = Lock()
+
 conversion_status: Dict = {}
 
 LARGE_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB
 CHUNK_SIZE = "100MB"
 
-def handle_conversion_request(conversion_id: str, zip_path: str, language: str, geo_type: str, crs: str, background_tasks, uploaded_file: bool) -> Union[FileResponse, dict]:
+def handle_conversion_request(conversion_id: str, zip_path: str, language: str, geo_type: str, crs: str, background_tasks, uploaded_file: bool, original_filename: Optional[str] = None) -> Union[FileResponse, dict]:
     """
     Handle API conversion request - manages status tracking and task scheduling.
     
@@ -83,16 +82,28 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
     """
     mapped_geo_type = GEOMETRY_TYPE_MAPPING[geo_type]
     mapped_crs = CRS_MAPPING[crs]
-    
     file_size = os.path.getsize(zip_path)
+
+    # Check for existing conversion status
+    with status_lock:
+        if conversion_id in conversion_status:
+            if conversion_status[conversion_id]["status"] == "processing":
+                logging.warning(f"Conversion ID {conversion_id} is already in use. Cancelling new request...")
+                return {"id": conversion_id, "status": "duplicate", "message": "This conversion is already in progress."}
+            elif conversion_status[conversion_id]["status"] == "completed":
+                logging.info(f"Conversion ID {conversion_id} has already been completed. Returning existing output...")
+                return {
+                    "id": conversion_id,
+                    "status": "completed",
+                    "message": "This conversion has already been completed.",
+                    "status_url": f"/status/{conversion_id}",
+                    "download_url": f"/output/{conversion_id}",
+                    "file_size_mb": round(conversion_status[conversion_id].get("file_size", 0) / (1024*1024), 1)
+                }
 
     logging.info(f"Starting conversion for ID: {conversion_id}, zip_path: {zip_path}, file size: {file_size}")
 
-    update_conversion_status(
-        conversion_id,
-        "processing",
-        uploaded_file=uploaded_file
-    )
+    update_conversion_status(conversion_id, "processing", uploaded_file=uploaded_file, original_filename=original_filename)
     
     if file_size < LARGE_FILE_THRESHOLD:
         # Small files: process immediately and clean up after
@@ -121,9 +132,7 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
         }
 
 def create_output_zip(zip_path: str, output_gpkg: str, conversion_id: str, cleanup_source: bool = False) -> str:
-    """
-    Create a ZIP file containing the GPKG and all other files from input ZIP.
-    """
+    """Create output ZIP containing the GPKG and all original files except occurrences.txt."""
     logging.debug(f"Creating output ZIP: {zip_path} with GPKG: {output_gpkg}")
     zip_path_out = app_settings.OUTPUT_PATH + conversion_id + '.zip'
 
@@ -175,47 +184,40 @@ def cleanup_files(*file_paths: str) -> None:
             except OSError as e:
                 logging.warning(f"Failed to clean up {file_path}: {e}")
 
+def _extract_and_process_zip(zip_path: str, conversion_id: str, language: str, geo_type: str, crs: str, wkt_column: str) -> str:
+    """Extract occurrences.txt from ZIP and process it to GeoPackage."""
+    output_gpkg = app_settings.OUTPUT_PATH + f'{conversion_id}.gpkg'
+    occurrence_file = "occurrences.txt"
+    
+    logging.debug(f"Reading occurrence file: {occurrence_file}...")
+    
+    with ZipFile(zip_path, "r") as zip_file:
+        with zip_file.open(occurrence_file) as source_file:
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                temp_file.write(source_file.read())
+                temp_file_path = temp_file.name
+
+    process_tsv_data(
+        conversion_id, zip_path, temp_file_path, output_gpkg, 
+        language, geo_type, crs, wkt_column=wkt_column,
+        cleanup_temp=True, compress_output=True
+    )
+    
+    return app_settings.OUTPUT_PATH + f"{conversion_id}.zip"
+
 def convert_file(zip_path: str, language: str, geo_type: str, crs: str, conversion_id: str) -> None:
     """Process file conversion from ZIP/TSV to GeoPackage."""
-    
-    output_gpkg = app_settings.OUTPUT_PATH + f'{conversion_id}.gpkg'
     wkt_column = GEOMETRY_LANG_MAPPING[language]
 
-
     try:
-        logging.debug(f"Processing {zip_path} -> {output_gpkg}")
+        logging.debug(f"Processing {zip_path} -> {conversion_id}")
 
         if zip_path.endswith(".zip"):
-            occurrence_file = f"occurrences.txt"
-            logging.debug(f"Reading occurrence file: {occurrence_file}...")
-
-            with ZipFile(zip_path, "r") as zip_file:
-                with zip_file.open(occurrence_file) as source_file:
-                    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                        temp_file.write(source_file.read())
-                        temp_file_path = temp_file.name
-
-            process_tsv_data(
-                conversion_id,
-                zip_path,
-                temp_file_path, 
-                output_gpkg, 
-                language,
-                geo_type, 
-                crs, 
-                wkt_column=wkt_column,
-                cleanup_temp=True, 
-                compress_output=True
-            )
+            final_output = _extract_and_process_zip(zip_path, conversion_id, language, geo_type, crs, wkt_column)
         else:
             # Process standalone TSV file
             logging.warning("Processing standalone TSV files is not implemented yet.")
-            pass
-        
-        if zip_path.endswith(".zip"):
-            final_output = app_settings.OUTPUT_PATH + f"{conversion_id}.zip"
-        else:
-            final_output = output_gpkg
+            return
             
         if not os.path.exists(final_output):
             raise FileNotFoundError(f"Output file was not created: {final_output}")
@@ -225,30 +227,32 @@ def convert_file(zip_path: str, language: str, geo_type: str, crs: str, conversi
         with status_lock:
             current_status = conversion_status.get(conversion_id, {})
             uploaded_file = current_status.get("uploaded_file", False)
+            original_filename = current_status.get("original_filename")
         
         update_conversion_status(
-            conversion_id, 
-            "completed", 
+            conversion_id, "completed", 
             output=final_output,
             file_size=os.path.getsize(final_output),
-            uploaded_file=uploaded_file
+            uploaded_file=uploaded_file,
+            original_filename=original_filename
         )
         
     except Exception as e:
         logging.error(f"Error during conversion: {e}")
         update_conversion_status(conversion_id, "failed", error=str(e))
-        cleanup_files(output_gpkg)
+        cleanup_files(app_settings.OUTPUT_PATH + f'{conversion_id}.gpkg')
 
 def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_type: str, append: bool = True) -> bool:
-    """Process a single partition and write it to a GeoPackage file.
-
-    Returns True if data was written (non-empty after filtering), else False.
-    """
+    """Process a partition and write valid geometries to GeoPackage. Returns True if data was written."""
     gdf = gpd.GeoDataFrame(
         partition.compute(), 
         geometry="geometry", 
         crs="EPSG:4326"
     ).to_crs(crs)
+
+    if gdf.empty:
+        logging.warning("The file is empty, skipping...")
+        return False
 
     valid_mask = (
         gdf['geometry'].notna() & 
@@ -280,7 +284,7 @@ def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_ty
     return True
 
 def read_tsv_as_dask_dataframe(file_path: str, language: str, wkt_column: str) -> dd.DataFrame:
-    """Read a TSV file into a Dask DataFrame and process WKT geometries."""
+    """Read TSV file into Dask DataFrame and process WKT geometries."""
     column_types = get_default_column_types(language, dtypes_path='lookup_table.tsv')
     mapped_language = LANGUAGE_MAPPING.get(language, 0)
     skipped_rows = [0, 1, 2]
@@ -320,6 +324,7 @@ def process_tsv_data(
     compress_output: bool = True
 ) -> None:
     """Process TSV data from a file and convert it to GeoPackage format."""
+    created = False
     try:
         ddf = read_tsv_as_dask_dataframe(temp_file_path, language, wkt_column)
 
@@ -332,7 +337,6 @@ def process_tsv_data(
         delayed_partitions = ddf.to_delayed()
         total_partitions = len(delayed_partitions)
 
-        created = False
         for idx, partition in enumerate(delayed_partitions):
             logging.debug(f"Writing partition {idx + 1} / {total_partitions}...")
             wrote = write_partition_to_geopackage(
@@ -350,8 +354,7 @@ def process_tsv_data(
             raise ValueError(f"No valid geometries found in the data. GPKG file could not be created.")
 
     finally:
-        logging.debug(f"Finished processing occurrences.txt -> {output_gpkg}")
-        if compress_output:
+        if compress_output and created:
             create_output_zip(zip_path, output_gpkg, conversion_id, cleanup_source=True)
 
         if cleanup_temp:

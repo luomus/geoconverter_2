@@ -1,6 +1,7 @@
 from functools import lru_cache
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 import shutil
 import tempfile
 import os
@@ -13,6 +14,16 @@ from typing import Literal, Optional
 import settings
 from gis_to_table import gis_to_table
 
+# Pydantic models for API responses
+class StatusResponse(BaseModel):
+    status: str
+
+class HealthResponse(BaseModel):
+    status: str
+
+class ErrorResponse(BaseModel):
+    detail: str
+
 # Get settings and configure logging
 app_settings = settings.Settings()
 log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
@@ -20,7 +31,13 @@ log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
 # Configure logging
 logging.basicConfig(level=log_level)
 
-app = FastAPI()
+app = FastAPI(
+    title="Geoconverter API",
+    description="A service for converting between GIS formats and tabular data",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 # Add CORS middleware to allow cross-origin requests
 app.add_middleware(
@@ -35,10 +52,19 @@ app.add_middleware(
 def get_settings():
   return settings.Settings()
 
-@app.post("/convert-to-table")
+@app.post("/convert-to-table",
+    summary="Convert GIS file to CSV table",
+    description="Upload a GIS file (Shapefile, GeoJSON, GPKG, etc.) and get back a CSV file with geometry as WKT",
+    tags=["File Conversion"],
+    responses={
+        200: {"description": "CSV file with converted data", "content": {"text/csv": {}}},
+        400: {"description": "Unsupported file type"},
+        500: {"description": "Conversion failed"}
+    }
+)
 async def convert_gis_to_table(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...)
+    file: UploadFile = File(..., description="GIS file to convert (SHP, GeoJSON, GPKG, KML, GML, ZIP)")
 ):
     """
     Convert a GIS file to a tabular CSV using the gis_to_table() function.
@@ -78,7 +104,16 @@ async def convert_gis_to_table(
         logging.error(f"GIS-to-table conversion failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/convert/{id}/{lang}/{geo}/{crs}")
+@app.get("/convert/{id}/{lang}/{geo}/{crs}",
+    summary="Convert file from data warehouse",
+    description="Convert a file stored in the data warehouse to GeoPackage format",
+    tags=["File Conversion"],
+    responses={
+        200: {"description": "Conversion started successfully"},
+        403: {"description": "Permission denied"},
+        500: {"description": "Conversion failed"}
+    }
+)
 async def convert_with_id(
   id: str,
   lang: Literal["fi", "en", "tech"],
@@ -94,31 +129,52 @@ async def convert_with_id(
     if not is_valid_download_request(id, personToken):
       raise HTTPException(status_code=403, detail="Permission denied.")
 
+    # Create unique conversion ID with parameters
+    conversion_id = f"{id}_{lang}_{geo}_{crs}"
     zip_path = get_settings().FILE_PATH + id + ".zip"
-    return handle_conversion_request(id, zip_path, lang, geo, crs, background_tasks, False)
+    return handle_conversion_request(conversion_id, zip_path, lang, geo, crs, background_tasks, False)
 
-@app.post("/convert/{lang}/{geo}/{crs}")
+@app.post("/convert/{lang}/{geo}/{crs}",
+    summary="Convert uploaded ZIP file",
+    description="Upload a ZIP file containing TSV data and convert it to zipped GeoPackage format",
+    tags=["File Conversion"],
+    responses={
+        200: {"description": "Conversion started successfully"},
+        400: {"description": "Invalid file or parameters"},
+        500: {"description": "Conversion failed"}
+    }
+)
 async def convert_with_file(
     lang: Literal["fi", "en", "tech"],
     geo: Literal["bbox", "point", "footprint"],
     crs: Literal["euref","wgs84"],
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...)
+    file: UploadFile = File(..., description="ZIP file containing TSV data")
 ):
     """API endpoint to receive ZIP TSV file and return a GeoPackage."""
 
     logging.info(f"Received file: {file.filename}, language: {lang}, geo: {geo}, crs: {crs}")
 
-    id = os.path.splitext(file.filename)[0]
+    # Create unique conversion ID with parameters
+    base_id = os.path.splitext(file.filename)[0]
+    id = f"{base_id}_{lang}_{geo}_{crs}"
 
     # Create a temporary file to store the uploaded zip
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
         shutil.copyfileobj(file.file, temp_zip)
         temp_zip_path = temp_zip.name
 
-    return handle_conversion_request(id, temp_zip_path, lang, geo, crs, background_tasks, True)
+    return handle_conversion_request(id, temp_zip_path, lang, geo, crs, background_tasks, True, original_filename=base_id)
 
-@app.get("/status/{id}")
+@app.get("/status/{id}",
+    summary="Check conversion status",
+    description="Get the current status of a file conversion process",
+    tags=["Status"],
+    responses={
+        200: {"description": "Status retrieved successfully"},
+        404: {"description": "Conversion ID not found"}
+    }
+)
 async def get_status(id: str):
     """ Endpoint to check the status of a conversion. """
     logging.info(f"Checking status for conversion ID: {id}")
@@ -127,14 +183,31 @@ async def get_status(id: str):
         if id not in conversion_status:
             raise HTTPException(status_code=404, detail="Conversion ID not found.")
         status = conversion_status[id]
-        return {"status": status["status"]}
+        return StatusResponse(status=status["status"])
     
-@app.get("/health")
+@app.get("/health",
+    summary="Health check",
+    description="Verify that the service is running and healthy",
+    tags=["System"],
+    responses={
+        200: {"description": "Service is healthy"}
+    }
+)
 async def health_check():
     """ Health check endpoint to verify the service is running. TODO: extend checks. """
-    return {"status": "ok"}
+    return HealthResponse(status="ok")
 
-@app.get("/output/{id}")
+@app.get("/output/{id}",
+    summary="Download conversion output",
+    description="Download the converted file for a completed conversion",
+    tags=["File Download"],
+    responses={
+        200: {"description": "Output file", "content": {"application/zip": {}}},
+        400: {"description": "Conversion not completed"},
+        403: {"description": "Permission denied"},
+        404: {"description": "Conversion ID or output file not found"}
+    }
+)
 async def get_output(id: str, personToken: Optional[str] = None):
     """ Endpoint to retrieve the output file for a completed conversion. """
     logging.info(f"Retrieving output for conversion ID: {id}")

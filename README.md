@@ -10,6 +10,7 @@ GeoConverter 2 is a comprehensive tool for converting geospatial data between di
 - Multiple geometry processing options: original footprints, centroids (points), or bounding boxes
 - Coordinate system transformation support (WGS84, EUREF-FIN)
 - Asynchronous processing for large files
+- **Unique conversion IDs**: Each combination of file and parameters gets a unique ID to prevent conflicts
 - Docker containerization for easy deployment
 - RESTful API with comprehensive status tracking
 
@@ -44,13 +45,26 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 
 **Response:**
 - Returns a JSON response describing the status of conversion and path to download the output when conversion is ready
+- The conversion ID will include the parameters to ensure uniqueness: `{filename}_{lang}_{geo}_{crs}`
 
 **Example Request:**
 ```bash
-curl -X 'POST' 'http://127.0.0.1:8000/convert/HBF.12345/tech/footprint/wgs84' \
+curl -X 'POST' 'http://127.0.0.1:8000/convert/tech/footprint/wgs84' \
     -H "Accept: application/json" \
     -H "Content-Type: multipart/form-data" \
     -F "file=@HBF.12345.zip"
+```
+
+**Example Response:**
+```json
+{
+  "id": "HBF.12345_tech_footprint_wgs84",
+  "status": "processing",
+  "message": "Large file detected (15.2MB). Processing in background...",
+  "status_url": "/status/HBF.12345_tech_footprint_wgs84",
+  "download_url": "/output/HBF.12345_tech_footprint_wgs84",
+  "file_size_mb": 15.2
+}
 ```
 
 ### `/convert/{id}/{lang}/{geo}/{crs}` (GET)
@@ -68,6 +82,7 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert/HBF.12345/tech/footprint/wgs84' \
 
 **Response:**
 - Returns a JSON response describing the status of conversion and path to download the output when conversion is ready
+- The conversion ID will include the parameters to ensure uniqueness: `{id}_{lang}_{geo}_{crs}`
 
 **Example Request:**
 ```bash
@@ -80,14 +95,14 @@ curl -X 'GET' 'http://127.0.0.1:8000/convert/HBF.12345/fi/footprint/wgs84?person
 **Description:** Gets the status of a file conversion
 
 **Path parameters:**
-- `id`: ID for file under conversion
+- `id`: Conversion ID (includes parameters: `{filename}_{lang}_{geo}_{crs}`)
   
 **Response:**
 - Returns a JSON response describing the status of the given file conversion
 
 **Example Request:**
 ```bash
-curl -X 'GET' 'http://127.0.0.1:8000/status/HBF.12345' \
+curl -X 'GET' 'http://127.0.0.1:8000/status/HBF.12345_fi_footprint_wgs84' \
     -H "Accept: application/json"
 ```
 
@@ -96,7 +111,7 @@ curl -X 'GET' 'http://127.0.0.1:8000/status/HBF.12345' \
 **Description:** Downloads the converted file
 
 **Path parameters:**
-- `id`: ID for converted file
+- `id`: Conversion ID (includes parameters: `{filename}_{lang}_{geo}_{crs}`)
 
 **Query parameters:**
 - `personToken`: Optional, user's personToken to check access right for the file with sensitive data.
@@ -106,7 +121,7 @@ curl -X 'GET' 'http://127.0.0.1:8000/status/HBF.12345' \
 
 **Example Request:**
 ```bash
-curl -X 'GET' 'http://127.0.0.1:8000/output/HBF.12345?personToken=your_token_here' \
+curl -X 'GET' 'http://127.0.0.1:8000/output/HBF.12345_fi_footprint_wgs84?personToken=your_token_here' \
     -o converted_HBF.12345.zip
 ```
 
@@ -152,6 +167,18 @@ cd geoconverter_2
    ```
 
 ## How It Works
+
+### Unique Conversion IDs
+
+To prevent conflicts when converting the same file with different parameters, the system generates unique conversion IDs by combining the filename with the conversion parameters:
+
+- **Format**: `{filename}_{language}_{geometry_type}_{crs}`
+- **Example**: `HBF.12345_fi_footprint_wgs84`
+
+This ensures that:
+- Multiple conversions of the same file with different parameters don't overwrite each other
+- Each parameter combination has its own status tracking and output file
+- Users can download different versions of the same dataset
 
 ### TSV to GeoPackage Conversion
 

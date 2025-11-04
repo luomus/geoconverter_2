@@ -162,7 +162,7 @@ async def convert_with_file(
 
     # Create unique conversion ID with parameters
     base_id = os.path.splitext(file.filename)[0]
-    id = f"{base_id}_{lang}_{geo}_{crs}"
+    id = f"{base_id}_{lang}_{geo}_{crs}" #TODO: Change this to random UID and store original id to the status
 
     # Create a temporary file to store the uploaded zip
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
@@ -192,15 +192,30 @@ async def get_status(id: str):
     
 @app.get("/health",
     summary="Health check",
-    description="Verify that the service is running and healthy",
+    description="Verify that the service is running and healthy. Returns processing status of active conversions.",
     tags=["System"],
     responses={
-        200: {"description": "Service is healthy"}
+        200: {
+            "description": "Service is healthy",
+            "content": {
+                "application/json": {
+                    "example": {"status": "ok", "processing": "2 conversions right now"}
+                }
+            }
+        }
     }
 )
 async def health_check():
-    """ Health check endpoint to verify the service is running. TODO: extend checks. """
-    return HealthResponse(status="ok")
+    """ Health check endpoint to verify the service is running."""
+    from table_to_gpkg import conversion_status, status_lock
+    
+    with status_lock:
+        processing_count = sum(s["status"] == "processing" for s in conversion_status.values())
+    
+    return {
+        "status": "ok",
+        "processing": f"{processing_count} conversions right now"
+    }
 
 @app.get("/output/{id}",
     summary="Download conversion output",
@@ -214,8 +229,19 @@ async def health_check():
     }
 )
 async def get_output(id: str, personToken: Optional[str] = None):
-    """ Endpoint to retrieve the output file for a completed conversion. """
+    """ Endpoint to retrieve the output file for a completed conversion. TODO: Ensure which id should be in use?"""
     logging.info(f"Retrieving output for conversion ID: {id}")
+
+    # Get the original base ID without language/geo/crs suffixes
+    if '_fi_' in id:
+        base_id = id.split('_fi_')[0]
+    elif '_en_' in id:
+        base_id = id.split('_en_')[0]
+    elif '_tech_' in id:
+        base_id = id.split('_tech_')[0]
+    else:
+        base_id = id
+
     from table_to_gpkg import conversion_status, status_lock
     with status_lock:
         if id not in conversion_status:
@@ -227,7 +253,7 @@ async def get_output(id: str, personToken: Optional[str] = None):
         if not os.path.exists(output_path):
             raise HTTPException(status_code=404, detail="Output file not found.")
         uploaded_file = status['uploaded_file']
-        if not uploaded_file and not is_valid_download_request(id, personToken):
+        if not uploaded_file and not is_valid_download_request(base_id, personToken):
             raise HTTPException(status_code=403, detail="Permission denied.")
         
         # Use original filename if available, otherwise use the conversion ID

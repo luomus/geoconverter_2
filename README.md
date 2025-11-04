@@ -127,14 +127,22 @@ curl -X 'GET' 'http://127.0.0.1:8000/output/HBF.12345_fi_footprint_wgs84?personT
 
 ### `/health` (GET)
 
-**Description:** Health check endpoint to verify the service is running
+**Description:** Health check endpoint to verify the service is running and check active conversions
 
 **Response:**
-- Returns service status
+- Returns service status and the number of conversions currently being processed
 
 **Example Request:**
 ```bash
 curl http://127.0.0.1:8000/health
+```
+
+**Example Response:**
+```json
+{
+  "status": "ok",
+  "processing": "2 conversions right now"
+}
 ```
 
 ## Installation and Usage

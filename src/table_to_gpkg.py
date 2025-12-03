@@ -256,7 +256,7 @@ def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_ty
     ).to_crs(crs)
 
     if gdf.empty:
-        logging.warning("The file is empty, skipping...")
+        logging.warning("The file is empty after crs conversion or computing, skipping...")
         return False
 
     valid_mask = (
@@ -277,15 +277,19 @@ def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_ty
     gdf = apply_geometry_transformation(gdf, geom_type)
     
     # Write to GeoPackage with thread safety
-    with write_lock:
-        write_dataframe(
-            gdf, 
-            output_gpkg,
-            driver="GPKG", 
-            encoding='utf8', 
-            promote_to_multi=True, 
-        append=append
-        )
+    try:
+        with write_lock:
+            write_dataframe(
+                gdf, 
+                output_gpkg,
+                driver="GPKG", 
+                encoding='utf8', 
+                promote_to_multi=True, 
+            append=append
+            )
+    except Exception as e:
+        logging.error(f"Failed to write partition to GeoPackage: {e}")
+        return False
     return True
 
 def read_tsv_as_dask_dataframe(file_path: str, language: str, wkt_column: str) -> dd.DataFrame:

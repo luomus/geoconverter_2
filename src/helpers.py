@@ -35,14 +35,24 @@ GEOMETRY_BUFFER_DISTANCE = 0.00001  # ~0.5 meters
 
 def safely_parse_wkt(wkt_string: str) -> Optional[Any]:
     """Safely convert WKT string to Shapely geometry."""
+    if not wkt_string or not isinstance(wkt_string, str):
+        return None
+    
     try:
         geom = loads(wkt_string)
         if geom is None or geom.is_empty or not geom.is_valid:
-            logging.warning(f"Invalid or empty geometry for WKT: {wkt_string}")
+            logging.warning(f"Invalid or empty geometry for WKT: {wkt_string[:50]}...")
             return None
-        bounds = geom.bounds
-        if any(not np.isfinite(coord) for coord in bounds):
-            logging.warning(f"Geometry with infinite coordinates found: {wkt_string[:100]}...")
+        
+        # Validate bounds
+        try:
+            bounds = geom.bounds
+            if not bounds or len(bounds) != 4:
+                return None
+            if any(not np.isfinite(coord) for coord in bounds):
+                logging.warning(f"Geometry with infinite coordinates found: {wkt_string[:50]}...")
+                return None
+        except Exception:
             return None
         return geom
             

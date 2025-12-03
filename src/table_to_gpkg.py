@@ -108,7 +108,11 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
     
     if file_size < LARGE_FILE_THRESHOLD:
         # Small files: process immediately and clean up after
-        convert_file(zip_path, language, mapped_geo_type, mapped_crs, conversion_id)
+        try:
+            convert_file(zip_path, language, mapped_geo_type, mapped_crs, conversion_id)
+        except Exception as e:
+            # Status already updated by convert_file, just re-raise
+            raise
                 
         return {
             "id": conversion_id,

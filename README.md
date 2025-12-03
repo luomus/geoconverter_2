@@ -18,10 +18,10 @@ GeoConverter 2 is a comprehensive tool for converting geospatial data between di
 
 ### `/convert-to-table` (POST)
 
-**Description:** Converts GIS formats (`.geojson`, `.json`, `.gpkg`, `.kml`, `.gml`) or compressed GIS files (e.g. `.shp` inside a `.zip`) into a CSV file. The filename is inferred from the uploaded file.
+**Description:** Converts GIS formats (`.geojson`, `.json`, `.gpkg`, `.kml`, `.gml`) or compressed GIS files (e.g. `.shp` inside a `.zip`) into a TSV file. The filename is inferred from the uploaded file.
 
 **Response:**
-- Returns converted CSV file, where the geometry is converted to WKT format. 
+- Returns converted TSV file, where the geometry is converted to WKT format.
 
 **Example Request:**
 ```bash

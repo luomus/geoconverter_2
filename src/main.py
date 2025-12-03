@@ -18,6 +18,7 @@ from email_notifications import notify_failure
 # Pydantic models for API responses
 class StatusResponse(BaseModel):
     status: str
+    error: Optional[str] = None
 
 class HealthResponse(BaseModel):
     status: str
@@ -188,7 +189,10 @@ async def get_status(id: str):
         if id not in conversion_status:
             raise HTTPException(status_code=404, detail="Conversion ID not found.")
         status = conversion_status[id]
-        return StatusResponse(status=status["status"])
+        return StatusResponse(
+            status=status["status"],
+            error=status.get("error")
+        )
     
 @app.get("/health",
     summary="Health check",

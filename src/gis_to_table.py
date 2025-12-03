@@ -82,7 +82,7 @@ def gis_to_table(gis_file):
     
     # Convert single-point MultiPoints to Points
     def simplify_multipoint(geom):
-        if geom.geom_type == 'MultiPoint' and len(geom.geoms) == 1:
+        if geom.geom_type in ['MultiPoint', 'MultiLineString', 'MultiPolygon'] and len(geom.geoms) == 1:
             return geom.geoms[0]
         return geom
     

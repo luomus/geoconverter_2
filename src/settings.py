@@ -7,12 +7,12 @@ class Settings(BaseSettings):
     OUTPUT_PATH: str = ''
     CONVERTER_ENV: str = 'staging'
     LOGGING: str = 'DEBUG'
-    
+
     # Email settings
     SMTP_HOST: str = 'localhost'
     SMTP_PORT: int = 25
-    SMTP_USER: str = 'user'
-    SMTP_PASSWORD: str = 'password'
+    SMTP_USER: str = ''
+    SMTP_PASSWORD: str = ''
     SMTP_TLS: bool = True
     FROM_EMAIL: str = 'geoconverter@luomus.fi'
     ADMIN_EMAILS: str = 'firstname@lastname.fi'

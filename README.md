@@ -34,7 +34,7 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 
 *Note: The `Accept` header specifies the expected response format, while `Content-Type` is automatically set by curl when using `-F` for file uploads but is included here for clarity.*
 
-### `/convert/{lang}/{geo}/{crs}` (POST)
+### `/{lang}/{geo}/{crs}` (POST)
 
 **Description:** Converts a ZIP file containing TSV data into a zipped GeoPackage. The TSV file should have the same schema and content as a downloadable file from FinBIF.
 
@@ -49,7 +49,7 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 
 **Example Request:**
 ```bash
-curl -X 'POST' 'http://127.0.0.1:8000/convert/tech/footprint/wgs84' \
+curl -X 'POST' 'http://127.0.0.1:8000/tech/footprint/wgs84' \
     -H "Accept: application/json" \
     -H "Content-Type: multipart/form-data" \
     -F "file=@HBF.12345.zip"
@@ -67,7 +67,7 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert/tech/footprint/wgs84' \
 }
 ```
 
-### `/convert/{id}/{lang}/{geo}/{crs}` (GET)
+### `/{id}/{lang}/{geo}/{crs}` (GET)
 
 **Description:** Downloads and converts a file by ID from files stored on the FinBIF data warehouse server
 
@@ -86,7 +86,7 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert/tech/footprint/wgs84' \
 
 **Example Request:**
 ```bash
-curl -X 'GET' 'http://127.0.0.1:8000/convert/HBF.12345/fi/footprint/wgs84?personToken=your_token_here' \
+curl -X 'GET' 'http://127.0.0.1:8000/HBF.12345/fi/footprint/wgs84?personToken=your_token_here' \
     -H "Accept: application/json"
 ```
 
@@ -163,7 +163,7 @@ cd geoconverter_2
 
 3. Test the API:
    ```bash
-   curl -X 'POST' 'http://127.0.0.1:8000/convert/fi/footprint/euref' \
+   curl -X 'POST' 'http://127.0.0.1:8000/fi/footprint/euref' \
        -H "Accept: application/json" \
        -H "Content-Type: multipart/form-data" \
        -F "file=@test_data/HBF.12345.zip"

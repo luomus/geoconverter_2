@@ -90,17 +90,10 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
         if conversion_id in conversion_status:
             if conversion_status[conversion_id]["status"] == "processing":
                 logging.warning(f"Conversion ID {conversion_id} is already in use. Cancelling new request...")
-                return {"id": conversion_id, "status": "duplicate", "message": "This conversion is already in progress."}
+                return conversion_id
             elif conversion_status[conversion_id]["status"] == "completed":
                 logging.info(f"Conversion ID {conversion_id} has already been completed. Returning existing output...")
-                return {
-                    "id": conversion_id,
-                    "status": "completed",
-                    "message": "This conversion has already been completed.",
-                    "status_url": f"/status/{conversion_id}",
-                    "download_url": f"/output/{conversion_id}",
-                    "file_size_mb": round(conversion_status[conversion_id].get("file_size", 0) / (1024*1024), 1)
-                }
+                return conversion_id
 
     logging.info(f"Starting conversion for ID: {conversion_id}, zip_path: {zip_path}, file size: {file_size}")
 
@@ -114,27 +107,13 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
             # Status already updated by convert_file, just re-raise
             raise
                 
-        return {
-            "id": conversion_id,
-            "status": "completed",
-            "message": "Small file processed immediately. Ready for download.",
-            "status_url": f"/status/{conversion_id}",
-            "download_url": f"/output/{conversion_id}",
-            "file_size_mb": round(file_size / (1024*1024), 1)
-        }
+        return conversion_id
         
     else:
         # Large files: process in background (background task handles cleanup)
         background_tasks.add_task(convert_file, zip_path, language, mapped_geo_type, mapped_crs, conversion_id)
 
-        return {
-            "id": conversion_id,
-            "status": "processing",
-            "message": f"Large file detected ({file_size / (1024*1024):.1f}MB). Processing in background...",
-            "status_url": f"/status/{conversion_id}",
-            "download_url": f"/output/{conversion_id}",
-            "file_size_mb": round(file_size / (1024*1024), 1)
-        }
+        return conversion_id
 
 def create_output_zip(zip_path: str, output_gpkg: str, conversion_id: str, cleanup_source: bool = False) -> str:
     """Create output ZIP containing the GPKG and all original files except occurrences.txt."""

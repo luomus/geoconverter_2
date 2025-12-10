@@ -16,10 +16,10 @@ def is_valid_download_request(id, person_token = None):
 
     if person_token:
         payload = { "personToken": person_token }
-  
+
     r = requests.get(url, params=payload)
-    
+
     if r.status_code != 200:
       return False
-    
+
     return True

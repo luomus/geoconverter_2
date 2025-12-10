@@ -1,6 +1,6 @@
 from functools import lru_cache
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Query
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import shutil
 import tempfile
@@ -112,9 +112,9 @@ async def convert_gis_to_table(
         
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/{id}/{lang}/{geo}/{crs}",
-    summary="Convert file from data warehouse",
-    description="Convert a file stored in the data warehouse to GeoPackage format",
+@app.get("/",
+    summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
+    description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
     tags=["File Conversion"],
     responses={
         200: {"description": "Conversion started successfully"},
@@ -123,28 +123,28 @@ async def convert_gis_to_table(
     }
 )
 async def convert_with_id(
-  id: str,
-  lang: Literal["fi", "en", "tech"],
-  geo: Literal["bbox", "point", "footprint"],
-  crs: Literal["euref","wgs84"],
-  background_tasks: BackgroundTasks,
-  personToken: Optional[str]= None
+    background_tasks: BackgroundTasks,
+    id: str = Query(..., description="ID of the file in the data warehouse"),
+    lang: Literal["fi", "en", "tech"] = Query(..., description="Language for field names (fi=Finnish, en=English, tech=technical)"),
+    geometryType: Literal["bbox", "point", "footprint"] = Query(..., description="Geometry type to use"),
+    crs: Literal["euref","wgs84"] = Query(..., description="Coordinate reference system"),
+    personToken: Optional[str] = Query(None, description="Authentication token for private data")
 ):
     """API enpoint to start converting file stored in dw"""
 
-    logging.info(f"Received request to convert ID: {id}, lang: {lang}, geo: {geo}, crs: {crs}")
+    logging.info(f"Received request to convert ID: {id}, lang: {lang}, geometryType: {geometryType}, crs: {crs}")
 
     if not is_valid_download_request(id, personToken):
       raise HTTPException(status_code=403, detail="Permission denied.")
 
     # Create unique conversion ID with parameters
-    conversion_id = f"{id}_{lang}_{geo}_{crs}"
+    conversion_id = f"{id}_{lang}_{geometryType}_{crs}"
     zip_path = get_settings().FILE_PATH + id + ".zip"
-    return handle_conversion_request(conversion_id, zip_path, lang, geo, crs, background_tasks, False)
+    return handle_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, False)
 
-@app.post("/{lang}/{geo}/{crs}",
-    summary="Convert uploaded ZIP file",
-    description="Upload a ZIP file containing TSV data and convert it to zipped GeoPackage format",
+@app.post("/",
+    summary="Convert uploaded ZIP file to a zipped GeoPackage",
+    description="Upload a ZIP file containing TSV data ('occurrences.tsv') and convert it to a zipped GeoPackage format",
     tags=["File Conversion"],
     responses={
         200: {"description": "Conversion started successfully"},
@@ -153,26 +153,26 @@ async def convert_with_id(
     }
 )
 async def convert_with_file(
-    lang: Literal["fi", "en", "tech"],
-    geo: Literal["bbox", "point", "footprint"],
-    crs: Literal["euref","wgs84"],
     background_tasks: BackgroundTasks,
+    lang: Literal["fi", "en", "tech"] = Query(..., description="Language for field names (fi=Finnish, en=English, tech=technical)"),
+    geometryType: Literal["bbox", "point", "footprint"] = Query(..., description="Geometry type to use"),
+    crs: Literal["euref","wgs84"] = Query(..., description="Coordinate reference system"),
     file: UploadFile = File(..., description="ZIP file containing TSV data")
 ):
     """API endpoint to receive ZIP TSV file and return a GeoPackage."""
 
-    logging.info(f"Received file: {file.filename}, language: {lang}, geo: {geo}, crs: {crs}")
+    logging.info(f"Received file: {file.filename}, language: {lang}, geometryType: {geometryType}, crs: {crs}")
 
     # Create unique conversion ID with parameters
     base_id = os.path.splitext(file.filename)[0]
-    id = f"{base_id}_{lang}_{geo}_{crs}" #TODO: Change this to random UID and store original id to the status
+    id = f"{base_id}_{lang}_{geometryType}_{crs}" #TODO: Change this to random UID and store original id to the status
 
     # Create a temporary file to store the uploaded zip
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
         shutil.copyfileobj(file.file, temp_zip)
         temp_zip_path = temp_zip.name
 
-    return handle_conversion_request(id, temp_zip_path, lang, geo, crs, background_tasks, True, original_filename=base_id)
+    return handle_conversion_request(id, temp_zip_path, lang, geometryType, crs, background_tasks, True, original_filename=base_id)
 
 @app.get("/status/{id}",
     summary="Check conversion status",
@@ -180,7 +180,8 @@ async def convert_with_file(
     tags=["Status"],
     responses={
         200: {"description": "Status retrieved successfully"},
-        404: {"description": "Conversion ID not found"}
+        404: {"description": "Conversion ID not found"},
+        500: {"description": "Conversion failed"}
     }
 )
 async def get_status(id: str):
@@ -191,12 +192,18 @@ async def get_status(id: str):
         if id not in conversion_status:
             raise HTTPException(status_code=404, detail="Conversion ID not found.")
         status = conversion_status[id]
-        return StatusResponse(
-            id=id,
-            status=status["status"],
-            progress=0,
-            error=status.get("error")
-        )
+        
+        response_data = {
+            "id": id,
+            "status": status["status"],
+            "progress": 0
+        }
+        
+        # Return 500 status code if conversion failed
+        if status["status"] == "failed":
+            return JSONResponse(content=response_data, status_code=500)
+        
+        return response_data
     
 @app.get("/health",
     summary="Health check",
@@ -240,7 +247,7 @@ async def get_output(id: str, personToken: Optional[str] = None):
     """ Endpoint to retrieve the output file for a completed conversion. TODO: Ensure which id should be in use?"""
     logging.info(f"Retrieving output for conversion ID: {id}")
 
-    # Get the original base ID without language/geo/crs suffixes
+    # Get the original base ID without language/geometryType/crs suffixes
     if '_fi_' in id:
         base_id = id.split('_fi_')[0]
     elif '_en_' in id:
@@ -285,25 +292,3 @@ async def cleanup_old_files():
                         del conversion_status[id]
     import threading
     threading.Thread(target=cleanup, daemon=True).start()
-
-@app.post("/test-email",
-    summary="Test email notification system",
-    description="Send a test email notification to verify the email system is working",
-    tags=["System"],
-    responses={
-        200: {"description": "Test email sent successfully"},
-        500: {"description": "Email sending failed"}
-    }
-)
-async def test_email():
-    """ Test email notification system. """
-    try:
-        logging.info("Testing email notification system...")
-        success = notify_failure("This is a test error message for email notification.", "TEST_ID")
-        if success:
-            return {"status": "Test email sent successfully"}
-        else:
-            raise HTTPException(status_code=500, detail="Email sending failed - check logs for details")
-    except Exception as e:
-        logging.error(f"Test email failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Email sending failed: {str(e)}")

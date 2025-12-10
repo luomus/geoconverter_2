@@ -12,7 +12,7 @@ GeoConverter 2 is a comprehensive tool for converting geospatial data between di
 - Asynchronous processing for large files
 - **Unique conversion IDs**: Each combination of file and parameters gets a unique ID to prevent conflicts
 - Docker containerization for easy deployment
-- RESTful API with comprehensive status tracking
+- RESTful API with status tracking
 
 ## API Endpoints
 
@@ -21,7 +21,7 @@ GeoConverter 2 is a comprehensive tool for converting geospatial data between di
 **Description:** Converts GIS formats (`.geojson`, `.json`, `.gpkg`, `.kml`, `.gml`) or compressed GIS files (e.g. `.shp` inside a `.zip`) into a TSV file. The filename is inferred from the uploaded file.
 
 **Response:**
-- Returns converted TSV file, where the geometry is converted to WKT format.
+- Returns converted CSV file, where the geometry is converted to WKT format. Uses field names suitable for FinBIF Data Bank / Vihko file upload.
 
 **Example Request:**
 ```bash
@@ -34,22 +34,22 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 
 *Note: The `Accept` header specifies the expected response format, while `Content-Type` is automatically set by curl when using `-F` for file uploads but is included here for clarity.*
 
-### `/{lang}/{geo}/{crs}` (POST)
+### `/` (POST)
 
 **Description:** Converts a ZIP file containing TSV data into a zipped GeoPackage. The TSV file should have the same schema and content as a downloadable file from FinBIF.
 
-**Path parameters:**
+**Query parameters:**
 - `lang`: Language of the headers - one of `fi`, `en`, or `tech`
-- `geo`: Geometry type - one of `footprint`, `bbox`, or `point`
+- `geometryType`: Geometry type - one of `footprint`, `bbox`, or `point`
 - `crs`: Coordinate Reference System (CRS) for output - either `wgs84` or `euref`
 
 **Response:**
 - Returns a JSON response describing the status of conversion and path to download the output when conversion is ready
-- The conversion ID will include the parameters to ensure uniqueness: `{filename}_{lang}_{geo}_{crs}`
+- The conversion ID will include the parameters to ensure uniqueness: `{filename}_{lang}_{geometryType}_{crs}`
 
 **Example Request:**
 ```bash
-curl -X 'POST' 'http://127.0.0.1:8000/tech/footprint/wgs84' \
+curl -X 'POST' 'http://127.0.0.1:8000/?lang=tech&geometryType=footprint&crs=wgs84' \
     -H "Accept: application/json" \
     -H "Content-Type: multipart/form-data" \
     -F "file=@HBF.12345.zip"
@@ -67,26 +67,24 @@ curl -X 'POST' 'http://127.0.0.1:8000/tech/footprint/wgs84' \
 }
 ```
 
-### `/{id}/{lang}/{geo}/{crs}` (GET)
+### `/` (GET)
 
 **Description:** Downloads and converts a file by ID from files stored on the FinBIF data warehouse server
 
-**Path parameters:**
+**Query parameters:**
 - `id`: ID for file download on the FinBIF server
 - `lang`: Language of the headers - one of `fi`, `en`, or `tech`
-- `geo`: Geometry type - one of `footprint`, `bbox`, or `point`
+- `geometryType`: Geometry type - one of `footprint`, `bbox`, or `point`
 - `crs`: Coordinate Reference System (CRS) for output - either `wgs84` or `euref`
-
-**Query parameters:**
-- `personToken`: User's personToken to check access rights for files with sensitive data
+- `personToken`: Optional, user's personToken to check access rights for files with sensitive data
 
 **Response:**
 - Returns a JSON response describing the status of conversion and path to download the output when conversion is ready
-- The conversion ID will include the parameters to ensure uniqueness: `{id}_{lang}_{geo}_{crs}`
+- The conversion ID will include the parameters to ensure uniqueness: `{id}_{lang}_{geometryType}_{crs}`
 
 **Example Request:**
 ```bash
-curl -X 'GET' 'http://127.0.0.1:8000/HBF.12345/fi/footprint/wgs84?personToken=your_token_here' \
+curl -X 'GET' 'http://127.0.0.1:8000/?id=HBF.12345&lang=fi&geometryType=footprint&crs=wgs84&personToken=your_token_here' \
     -H "Accept: application/json"
 ```
 
@@ -95,7 +93,7 @@ curl -X 'GET' 'http://127.0.0.1:8000/HBF.12345/fi/footprint/wgs84?personToken=yo
 **Description:** Gets the status of a file conversion
 
 **Path parameters:**
-- `id`: Conversion ID (includes parameters: `{filename}_{lang}_{geo}_{crs}`)
+- `id`: Conversion ID (includes parameters: `{filename}_{lang}_{geometryType}_{crs}`)
   
 **Response:**
 - Returns a JSON response describing the status of the given file conversion
@@ -111,7 +109,7 @@ curl -X 'GET' 'http://127.0.0.1:8000/status/HBF.12345_fi_footprint_wgs84' \
 **Description:** Downloads the converted file
 
 **Path parameters:**
-- `id`: Conversion ID (includes parameters: `{filename}_{lang}_{geo}_{crs}`)
+- `id`: Conversion ID (includes parameters: `{filename}_{lang}_{geometryType}_{crs}`)
 
 **Query parameters:**
 - `personToken`: Optional, user's personToken to check access right for the file with sensitive data.
@@ -163,7 +161,7 @@ cd geoconverter_2
 
 3. Test the API:
    ```bash
-   curl -X 'POST' 'http://127.0.0.1:8000/fi/footprint/euref' \
+   curl -X 'POST' 'http://127.0.0.1:8000/?lang=fi&geometryType=footprint&crs=euref' \
        -H "Accept: application/json" \
        -H "Content-Type: multipart/form-data" \
        -F "file=@test_data/HBF.12345.zip"
@@ -180,7 +178,7 @@ cd geoconverter_2
 
 To prevent conflicts when converting the same file with different parameters, the system generates unique conversion IDs by combining the filename with the conversion parameters:
 
-- **Format**: `{filename}_{language}_{geometry_type}_{crs}`
+- **Format**: `{filename}_{language}_{geometryType}_{crs}`
 - **Example**: `HBF.12345_fi_footprint_wgs84`
 
 This ensures that:

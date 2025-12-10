@@ -35,7 +35,7 @@ GEOMETRY_BUFFER_DISTANCE = 0.00001  # ~0.5 meters
 
 def safely_parse_wkt(wkt_string: str) -> Optional[Any]:
     """Safely convert WKT string to Shapely geometry."""
-    if not wkt_string or not isinstance(wkt_string, str):
+    if pd.isna(wkt_string) or not isinstance(wkt_string, str) or not wkt_string:
         return None
     
     try:

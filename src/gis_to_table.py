@@ -90,13 +90,13 @@ def gis_to_table(gis_file):
 
     # Convert to table format
     crs_info = CRS_MAPPING.get(str(gdf.crs).lower(), "Not supported")
-    gdf["geometry_wkt"] = gdf.geometry.to_wkt()
-    gdf["crs"] = crs_info
+    gdf["Koordinaatit - Keruutapahtuma"] = gdf.geometry.to_wkt()
+    gdf["Koordinaatit@System - Keruutapahtuma"] = crs_info
     df = gdf.drop(columns=gdf.geometry.name)
 
     # Save as CSV with proper Excel-compatible settings
-    csv_path = os.path.splitext(gis_file)[0] + ".tsv"
-    df.to_csv(csv_path, sep='\t', index=False, escapechar='\\', encoding='utf-8-sig')
+    csv_path = os.path.splitext(gis_file)[0] + ".csv"
+    df.to_csv(csv_path, sep=',', index=False, escapechar='\\', encoding='utf-8-sig')
 
     logging.debug(f"Converted {len(df)} records to {csv_path}")
     return csv_path

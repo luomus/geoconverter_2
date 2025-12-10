@@ -155,6 +155,7 @@ def update_conversion_status(conversion_id: str, status: str, **kwargs) -> None:
         conversion_status[conversion_id] = {
             "status": status,
             "timestamp": time(),
+            "progress": kwargs.pop("progress", 0),
             **kwargs
         }
 
@@ -218,7 +219,8 @@ def convert_file(zip_path: str, language: str, geo_type: str, crs: str, conversi
             output=final_output,
             file_size=os.path.getsize(final_output),
             uploaded_file=uploaded_file,
-            original_filename=original_filename
+            original_filename=original_filename,
+            progress=100
         )
         
     except Exception as e:
@@ -330,7 +332,9 @@ def process_tsv_data(
         total_partitions = len(delayed_partitions)
 
         for idx, partition in enumerate(delayed_partitions):
-            logging.debug(f"Writing partition {idx + 1} / {total_partitions}...")
+            progress = int((idx / total_partitions) * 100)
+            update_conversion_status(conversion_id, "processing", progress=progress)
+            logging.debug(f"Writing partition {idx + 1} / {total_partitions}... ({progress}%)")
             wrote = write_partition_to_geopackage(
                 partition,
                 crs,
@@ -340,6 +344,9 @@ def process_tsv_data(
             )
             if wrote and not created:
                 created = True
+        
+        # Set to 100% when done processing partitions
+        update_conversion_status(conversion_id, "processing", progress=100)
 
         # Check if GPKG was actually created
         if not created or not os.path.exists(output_gpkg):

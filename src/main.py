@@ -196,7 +196,7 @@ async def get_status(id: str):
         response_data = {
             "id": id,
             "status": status["status"],
-            "progress": 0
+            "progress": status.get("progress", 0)
         }
         
         # Return 500 status code if conversion failed

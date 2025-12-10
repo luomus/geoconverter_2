@@ -125,7 +125,7 @@ async def convert_gis_to_table(
 async def convert_with_id(
     background_tasks: BackgroundTasks,
     id: str = Query(..., description="ID of the file in the data warehouse"),
-    lang: Literal["fi", "en", "tech"] = Query(..., description="Language for field names (fi=Finnish, en=English, tech=technical)"),
+    lang: Literal["fi", "en", "tech"] = Query("tech", description="Language for field names (fi=Finnish, en=English, tech=technical)"),
     geometryType: Literal["bbox", "point", "footprint"] = Query(..., description="Geometry type to use"),
     crs: Literal["euref","wgs84"] = Query(..., description="Coordinate reference system"),
     personToken: Optional[str] = Query(None, description="Authentication token for private data")
@@ -154,7 +154,7 @@ async def convert_with_id(
 )
 async def convert_with_file(
     background_tasks: BackgroundTasks,
-    lang: Literal["fi", "en", "tech"] = Query(..., description="Language for field names (fi=Finnish, en=English, tech=technical)"),
+    lang: Literal["fi", "en", "tech"] = Query("tech", description="Language for field names (fi=Finnish, en=English, tech=technical)"),
     geometryType: Literal["bbox", "point", "footprint"] = Query(..., description="Geometry type to use"),
     crs: Literal["euref","wgs84"] = Query(..., description="Coordinate reference system"),
     file: UploadFile = File(..., description="ZIP file containing TSV data")

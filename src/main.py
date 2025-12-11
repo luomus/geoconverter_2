@@ -1,5 +1,5 @@
 from functools import lru_cache
-from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Query, Path
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import shutil
@@ -112,7 +112,7 @@ async def convert_gis_to_table(
         
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/{id}",
+@app.get("/{id}/",
     summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
     description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
     tags=["File Conversion"],
@@ -124,7 +124,7 @@ async def convert_gis_to_table(
 )
 async def convert_with_id(
     background_tasks: BackgroundTasks,
-    id: str = Query(..., description="ID of the file in the data warehouse"),
+    id: str = Path(..., description="ID of the file in the data warehouse"),
     lang: Literal["fi", "en", "tech"] = Query("tech", description="Language for field names (fi=Finnish, en=English, tech=technical)"),
     geometryType: Literal["bbox", "point", "footprint"] = Query(..., description="Geometry type to use"),
     crs: Literal["euref","wgs84"] = Query(..., description="Coordinate reference system"),

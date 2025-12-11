@@ -55,7 +55,7 @@ from table_to_gpkg import (
 @pytest.mark.parametrize(
     "file_size,expected_status,expect_background",
     [
-        (1024, "completed", False),            # small file (1 KB)
+        (1024, "complete", False),            # small file (1 KB)
         (12 * 1024 * 1024, "processing", True)  # large file (12 MB)
     ]
 )
@@ -224,7 +224,7 @@ def test_convert_file_success(mock_update_status, mock_extract_process, mock_get
     
     final_call = mock_update_status.call_args_list[-1]
     assert final_call[0][0] == conversion_id
-    assert final_call[0][1] == "completed"
+    assert final_call[0][1] == "complete"
 
 
 @patch("table_to_gpkg._extract_and_process_zip")

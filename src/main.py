@@ -19,7 +19,7 @@ from email_notifications import notify_failure
 class StatusResponse(BaseModel):
     id: str
     status: str
-    progress: int
+    progress_percent: int
     error: Optional[str] = None
 
 class HealthResponse(BaseModel):
@@ -196,7 +196,7 @@ async def get_status(id: str):
         response_data = {
             "id": id,
             "status": status["status"],
-            "progress": status.get("progress", 0)
+            "progress_percent": status.get("progress_percent", 0)
         }
         
         # Return 500 status code if conversion failed
@@ -262,7 +262,7 @@ async def get_output(id: str, personToken: Optional[str] = None):
         if id not in conversion_status:
             raise HTTPException(status_code=404, detail="Conversion ID not found.")
         status = conversion_status[id]
-        if status["status"] != "completed":
+        if status["status"] != "complete":
             raise HTTPException(status_code=400, detail="Conversion not completed yet.")
         output_path = status["output"]
         if not os.path.exists(output_path):

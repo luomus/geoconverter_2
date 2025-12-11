@@ -91,7 +91,7 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
             if conversion_status[conversion_id]["status"] == "processing":
                 logging.warning(f"Conversion ID {conversion_id} is already in use. Cancelling new request...")
                 return conversion_id
-            elif conversion_status[conversion_id]["status"] == "completed":
+            elif conversion_status[conversion_id]["status"] == "complete":
                 logging.info(f"Conversion ID {conversion_id} has already been completed. Returning existing output...")
                 return conversion_id
 
@@ -155,7 +155,7 @@ def update_conversion_status(conversion_id: str, status: str, **kwargs) -> None:
         conversion_status[conversion_id] = {
             "status": status,
             "timestamp": time(),
-            "progress": kwargs.pop("progress", 0),
+            "progress_percent": kwargs.pop("progress_percent", 0),
             **kwargs
         }
 
@@ -215,12 +215,12 @@ def convert_file(zip_path: str, language: str, geo_type: str, crs: str, conversi
             original_filename = current_status.get("original_filename")
         
         update_conversion_status(
-            conversion_id, "completed", 
+            conversion_id, "complete", 
             output=final_output,
             file_size=os.path.getsize(final_output),
             uploaded_file=uploaded_file,
             original_filename=original_filename,
-            progress=100
+            progress_percent=100
         )
         
     except Exception as e:
@@ -332,9 +332,9 @@ def process_tsv_data(
         total_partitions = len(delayed_partitions)
 
         for idx, partition in enumerate(delayed_partitions):
-            progress = int((idx / total_partitions) * 100)
-            update_conversion_status(conversion_id, "processing", progress=progress)
-            logging.debug(f"Writing partition {idx + 1} / {total_partitions}... ({progress}%)")
+            progress_percent = int(((idx + 1) / total_partitions) * 100)
+            update_conversion_status(conversion_id, "processing", progress_percent=progress_percent)
+            logging.debug(f"Writing partition {idx + 1} / {total_partitions}... ({progress_percent}%)")
             wrote = write_partition_to_geopackage(
                 partition,
                 crs,
@@ -346,7 +346,7 @@ def process_tsv_data(
                 created = True
         
         # Set to 100% when done processing partitions
-        update_conversion_status(conversion_id, "processing", progress=100)
+        update_conversion_status(conversion_id, "processing", progress_percent=100)
 
         # Check if GPKG was actually created
         if not created or not os.path.exists(output_gpkg):

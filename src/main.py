@@ -112,7 +112,7 @@ async def convert_gis_to_table(
         
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/{id}/",
+@app.get("/{id}",
     summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
     description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
     tags=["File Conversion"],

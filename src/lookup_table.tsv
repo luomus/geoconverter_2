@@ -66,3 +66,4 @@ additionalIDs	Lisätunnisteet	Additional IDs	object
 availableDate	Vastaanotettu Lajitietokeskuksessa	Date Available in FinBIF	object
 license	Lisenssi	License	category
 qualityIssues	Virheet	Quality Issues	object
+otherCatalogNumbers	Lisätunnisteet	Additional IDs	object

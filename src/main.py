@@ -112,7 +112,7 @@ async def convert_gis_to_table(
         
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/",
+@app.get("/{id}",
     summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
     description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
     tags=["File Conversion"],
@@ -144,7 +144,7 @@ async def convert_with_id(
 
 @app.post("/",
     summary="Convert uploaded ZIP file to a zipped GeoPackage",
-    description="Upload a ZIP file containing TSV data ('occurrences.tsv') and convert it to a zipped GeoPackage format",
+    description="Upload a ZIP file containing TSV data ('occurrences.tsv') and convert it to a zipped GeoPackage format. ID is generated based on the original filename and parameters.",
     tags=["File Conversion"],
     responses={
         200: {"description": "Conversion started successfully"},

@@ -140,7 +140,7 @@ async def convert_with_id(
     # Create unique conversion ID with parameters
     conversion_id = f"{id}_{lang}_{geometryType}_{crs}"
     zip_path = get_settings().FILE_PATH + id + ".zip"
-    return handle_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, False)
+    return handle_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, False, original_filename=id)
 
 @app.post("/",
     summary="Convert uploaded ZIP file to a zipped GeoPackage",

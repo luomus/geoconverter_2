@@ -335,7 +335,7 @@ def process_tsv_data(
         total_partitions = len(delayed_partitions)
 
         for idx, partition in enumerate(delayed_partitions):
-            progress_percent = int(((idx + 1) / total_partitions) * 100)
+            progress_percent = min(int(((idx + 1) / total_partitions) * 100), 99)
             update_conversion_status(conversion_id, "processing", progress_percent=progress_percent)
             logging.debug(f"Writing partition {idx + 1} / {total_partitions}... ({progress_percent}%)")
             wrote = write_partition_to_geopackage(
@@ -348,8 +348,8 @@ def process_tsv_data(
             if wrote and not created:
                 created = True
         
-        # Set to 100% when done processing partitions
-        update_conversion_status(conversion_id, "processing", progress_percent=100)
+        # Set to 99% when done processing partitions (100% only when status is "complete")
+        update_conversion_status(conversion_id, "processing", progress_percent=99)
 
         # Check if GPKG was actually created
         if not created or not os.path.exists(output_gpkg):

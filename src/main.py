@@ -112,36 +112,6 @@ async def convert_gis_to_table(
         
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/{id}",
-    summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
-    description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
-    tags=["File Conversion"],
-    responses={
-        200: {"description": "Conversion started successfully"},
-        403: {"description": "Permission denied"},
-        500: {"description": "Conversion failed"}
-    }
-)
-async def convert_with_id(
-    background_tasks: BackgroundTasks,
-    id: str = Path(..., description="ID of the file in the data warehouse"),
-    lang: Literal["fi", "en", "tech"] = Query("tech", description="Language for field names (fi=Finnish, en=English, tech=technical)"),
-    geometryType: Literal["bbox", "point", "footprint"] = Query(..., description="Geometry type to use"),
-    crs: Literal["euref","wgs84"] = Query(..., description="Coordinate reference system"),
-    personToken: Optional[str] = Query(None, description="Authentication token for private data")
-):
-    """API enpoint to start converting file stored in dw"""
-
-    logging.info(f"Received request to convert ID: {id}, lang: {lang}, geometryType: {geometryType}, crs: {crs}")
-
-    if not is_valid_download_request(id, personToken):
-      raise HTTPException(status_code=403, detail="Permission denied.")
-
-    # Create unique conversion ID with parameters
-    conversion_id = f"{id}_{lang}_{geometryType}_{crs}"
-    zip_path = get_settings().FILE_PATH + id + ".zip"
-    return handle_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, False, original_filename=id)
-
 @app.post("/",
     summary="Convert uploaded ZIP file to a zipped GeoPackage",
     description="Upload a ZIP file containing TSV data ('occurrences.tsv') and convert it to a zipped GeoPackage format. ID is generated based on the original filename and parameters.",
@@ -272,8 +242,39 @@ async def get_output(id: str, personToken: Optional[str] = None):
             raise HTTPException(status_code=403, detail="Permission denied.")
         
         # Use original filename if available, otherwise use the conversion ID
-        original_filename = status.get("original_filename", id)
+        original_filename = status.get("original_filename", base_id)
+        logging.debug(f"Download request - ID: {id}, base_id: {base_id}, original_filename from status: {original_filename}, uploaded_file: {uploaded_file}")
         return FileResponse(output_path, filename=f"{original_filename}.zip", media_type="application/zip")
+
+@app.get("/{id}",
+    summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
+    description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
+    tags=["File Conversion"],
+    responses={
+        200: {"description": "Conversion started successfully"},
+        403: {"description": "Permission denied"},
+        500: {"description": "Conversion failed"}
+    }
+)
+async def convert_with_id(
+    background_tasks: BackgroundTasks,
+    id: str = Path(..., description="ID of the file in the data warehouse"),
+    lang: Literal["fi", "en", "tech"] = Query("tech", description="Language for field names (fi=Finnish, en=English, tech=technical)"),
+    geometryType: Literal["bbox", "point", "footprint"] = Query(..., description="Geometry type to use"),
+    crs: Literal["euref","wgs84"] = Query(..., description="Coordinate reference system"),
+    personToken: Optional[str] = Query(None, description="Authentication token for private data")
+):
+    """API enpoint to start converting file stored in dw"""
+
+    logging.info(f"Received request to convert ID: {id}, lang: {lang}, geometryType: {geometryType}, crs: {crs}")
+
+    if not is_valid_download_request(id, personToken):
+      raise HTTPException(status_code=403, detail="Permission denied.")
+
+    # Create unique conversion ID with parameters
+    conversion_id = f"{id}_{lang}_{geometryType}_{crs}"
+    zip_path = get_settings().FILE_PATH + id + ".zip"
+    return handle_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, False, original_filename=id)
 
 @app.on_event("startup")
 async def cleanup_old_files():

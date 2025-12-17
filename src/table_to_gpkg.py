@@ -152,7 +152,10 @@ def create_output_zip(zip_path: str, output_gpkg: str, conversion_id: str, clean
 def update_conversion_status(conversion_id: str, status: str, **kwargs) -> None:
     """Thread-safe update of conversion status."""
     with status_lock:
+        # Preserve existing values and update with new ones
+        existing = conversion_status.get(conversion_id, {})
         conversion_status[conversion_id] = {
+            **existing,
             "status": status,
             "timestamp": time(),
             "progress_percent": kwargs.pop("progress_percent", 0),

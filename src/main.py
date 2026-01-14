@@ -1,7 +1,7 @@
 from functools import lru_cache
 from fastapi import FastAPI, File, UploadFile, HTTPException, BackgroundTasks, Query, Path
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import shutil
 import tempfile
 import os
@@ -17,16 +17,16 @@ from email_notifications import notify_failure
 
 # Pydantic models for API responses
 class StatusResponse(BaseModel):
-    id: str
-    status: str
-    progress_percent: int
-    error: Optional[str] = None
+    id: str = Field(..., description="Unique conversion identifier", examples=["dataset123_tech_point_wgs84"])
+    status: str = Field(..., description="Current status: processing, complete, or failed", examples=["processing"])
+    progress_percent: int = Field(..., description="Completion percentage (0-100)", examples=[45], ge=0, le=100)
 
 class HealthResponse(BaseModel):
-    status: str
+    status: str = Field(..., description="Service health status", examples=["ok"])
+    processing: str = Field(..., description="Number of active conversions", examples=["2 conversions right now"])
 
 class ErrorResponse(BaseModel):
-    detail: str
+    detail: str = Field(..., description="Error message", examples=["Conversion ID not found"])
 
 # Get settings and configure logging
 app_settings = settings.Settings()
@@ -62,8 +62,8 @@ def get_settings():
     tags=["File Conversion"],
     responses={
         200: {"description": "CSV file with converted data", "content": {"text/csv": {}}},
-        400: {"description": "Unsupported file type"},
-        500: {"description": "Conversion failed"}
+        400: {"model": ErrorResponse, "description": "Unsupported file type"},
+        500: {"model": ErrorResponse, "description": "Conversion failed"}
     }
 )
 async def convert_gis_to_table(
@@ -116,21 +116,10 @@ async def convert_gis_to_table(
     summary="Convert uploaded ZIP file to a zipped GeoPackage",
     description="Upload a ZIP file containing TSV data ('occurrences.tsv') and convert it to a zipped GeoPackage format. ID is generated based on the original filename and parameters.",
     tags=["File Conversion"],
+    response_model=StatusResponse,
     responses={
-        200: {
-            "description": "Conversion started successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "id": "mydata_tech_point_wgs84",
-                        "status": "processing",
-                        "progress_percent": 0
-                    }
-                }
-            }
-        },
-        400: {"description": "Invalid file or parameters"},
-        500: {"description": "Conversion failed"}
+        400: {"model": ErrorResponse, "description": "Invalid file or parameters"},
+        500: {"model": ErrorResponse, "description": "Conversion failed"}
     }
 )
 async def convert_with_file(
@@ -159,35 +148,13 @@ async def convert_with_file(
     summary="Check conversion status",
     description="Get the current status of a file conversion process",
     tags=["Status"],
+    response_model=StatusResponse,
     responses={
-        200: {
-            "description": "Status retrieved successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "id": "HBF.12345_tech_point_wgs84",
-                        "status": "complete",
-                        "progress_percent": 100
-                    }
-                }
-            }
-        },
-        404: {"description": "Conversion ID not found"},
-        500: {
-            "description": "Conversion failed",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "id": "HBF.12345_fi_bbox_euref",
-                        "status": "failed",
-                        "progress_percent": 0
-                    }
-                }
-            }
-        }
+        404: {"model": ErrorResponse, "description": "Conversion ID not found"},
+        500: {"model": StatusResponse, "description": "Conversion failed"}
     }
 )
-async def get_status(id: str):
+async def get_status(id: str = Path(..., description="Conversion ID to check")):
     """ Endpoint to check the status of a conversion. """
     logging.info(f"Checking status for conversion ID: {id}")
     from table_to_gpkg import conversion_status, status_lock
@@ -212,16 +179,7 @@ async def get_status(id: str):
     summary="Health check",
     description="Verify that the service is running and healthy. Returns processing status of active conversions.",
     tags=["System"],
-    responses={
-        200: {
-            "description": "Service is healthy",
-            "content": {
-                "application/json": {
-                    "example": {"status": "ok", "processing": "2 conversions right now"}
-                }
-            }
-        }
-    }
+    response_model=HealthResponse
 )
 async def health_check():
     """ Health check endpoint to verify the service is running."""
@@ -241,12 +199,15 @@ async def health_check():
     tags=["File Download"],
     responses={
         200: {"description": "Output file", "content": {"application/zip": {}}},
-        400: {"description": "Conversion not completed"},
-        403: {"description": "Permission denied"},
-        404: {"description": "Conversion ID or output file not found"}
+        400: {"model": ErrorResponse, "description": "Conversion not completed"},
+        403: {"model": ErrorResponse, "description": "Permission denied"},
+        404: {"model": ErrorResponse, "description": "Conversion ID or output file not found"}
     }
 )
-async def get_output(id: str, personToken: Optional[str] = None):
+async def get_output(
+    id: str = Path(..., description="Conversion ID"),
+    personToken: Optional[str] = Query(None, description="Authentication token for private data")
+):
     """ Endpoint to retrieve the output file for a completed conversion. TODO: Ensure which id should be in use?"""
     logging.info(f"Retrieving output for conversion ID: {id}")
 
@@ -283,21 +244,10 @@ async def get_output(id: str, personToken: Optional[str] = None):
     summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
     description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
     tags=["File Conversion"],
+    response_model=StatusResponse,
     responses={
-        200: {
-            "description": "Conversion started successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "id": "dataset789_en_footprint_euref",
-                        "status": "processing",
-                        "progress_percent": 0
-                    }
-                }
-            }
-        },
-        403: {"description": "Permission denied"},
-        500: {"description": "Conversion failed"}
+        403: {"model": ErrorResponse, "description": "Permission denied"},
+        500: {"model": ErrorResponse, "description": "Conversion failed"}
     }
 )
 async def convert_with_id(

@@ -18,7 +18,7 @@ from email_notifications import notify_failure
 # Pydantic models for API responses
 class StatusResponse(BaseModel):
     id: str = Field(..., description="Unique conversion identifier", examples=["dataset123_tech_point_wgs84"])
-    status: str = Field(..., description="Current status: processing, complete, or failed", examples=["processing"])
+    status: Literal["processing", "complete", "failed"] = Field(..., description="Current conversion status", examples=["processing"])
     progress_percent: int = Field(..., description="Completion percentage (0-100)", examples=[45], ge=0, le=100)
 
 class HealthResponse(BaseModel):

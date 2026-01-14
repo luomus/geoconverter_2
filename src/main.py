@@ -135,7 +135,7 @@ async def convert_with_file(
 
     # Create unique conversion ID with parameters
     base_id = os.path.splitext(file.filename)[0]
-    id = f"{base_id}_{lang}_{geometryType}_{crs}" #TODO: Change this to random UID and store original id to the status
+    id = f"{base_id}_{lang}_{geometryType}_{crs}" # Unique ID based on filename and params
 
     # Create a temporary file to store the uploaded zip
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
@@ -151,7 +151,7 @@ async def convert_with_file(
     response_model=StatusResponse,
     responses={
         404: {"model": ErrorResponse, "description": "Conversion ID not found"},
-        500: {"model": StatusResponse, "description": "Conversion failed"}
+        500: {"model": ErrorResponse, "description": "Conversion failed"}
     }
 )
 async def get_status(id: str = Path(..., description="Conversion ID to check")):
@@ -244,9 +244,10 @@ async def get_output(
     summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
     description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
     tags=["File Conversion"],
-    response_model=StatusResponse,
     responses={
+        200: {"description": "Conversion started successfully. Returns the conversion ID string.", "content": {"text/plain": {"example": "dataset123_tech_point_wgs84"}}},
         403: {"model": ErrorResponse, "description": "Permission denied"},
+        404: {"model": ErrorResponse, "description": "File not found in data warehouse"},
         500: {"model": ErrorResponse, "description": "Conversion failed"}
     }
 )

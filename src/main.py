@@ -117,7 +117,18 @@ async def convert_gis_to_table(
     description="Upload a ZIP file containing TSV data ('occurrences.tsv') and convert it to a zipped GeoPackage format. ID is generated based on the original filename and parameters.",
     tags=["File Conversion"],
     responses={
-        200: {"description": "Conversion started successfully"},
+        200: {
+            "description": "Conversion started successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": "mydata_tech_point_wgs84",
+                        "status": "processing",
+                        "progress_percent": 0
+                    }
+                }
+            }
+        },
         400: {"description": "Invalid file or parameters"},
         500: {"description": "Conversion failed"}
     }
@@ -149,9 +160,31 @@ async def convert_with_file(
     description="Get the current status of a file conversion process",
     tags=["Status"],
     responses={
-        200: {"description": "Status retrieved successfully"},
+        200: {
+            "description": "Status retrieved successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": "HBF.12345_tech_point_wgs84",
+                        "status": "complete",
+                        "progress_percent": 100
+                    }
+                }
+            }
+        },
         404: {"description": "Conversion ID not found"},
-        500: {"description": "Conversion failed"}
+        500: {
+            "description": "Conversion failed",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": "HBF.12345_fi_bbox_euref",
+                        "status": "failed",
+                        "progress_percent": 0
+                    }
+                }
+            }
+        }
     }
 )
 async def get_status(id: str):
@@ -251,7 +284,18 @@ async def get_output(id: str, personToken: Optional[str] = None):
     description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
     tags=["File Conversion"],
     responses={
-        200: {"description": "Conversion started successfully"},
+        200: {
+            "description": "Conversion started successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "id": "dataset789_en_footprint_euref",
+                        "status": "processing",
+                        "progress_percent": 0
+                    }
+                }
+            }
+        },
         403: {"description": "Permission denied"},
         500: {"description": "Conversion failed"}
     }

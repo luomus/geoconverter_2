@@ -279,12 +279,34 @@ async def cleanup_old_files():
         while True:
             time.sleep(3600)  # Run cleanup every hour
             from table_to_gpkg import conversion_status, status_lock
-            with status_lock:
-                current_time = time.time()
-                for id, status in list(conversion_status.items()):
-                    if current_time - status["timestamp"] > 86400:  # 24 hours
-                        if os.path.exists(status["output"]):
-                            os.remove(status["output"])
-                        del conversion_status[id]
+            
+            output_path = get_settings().OUTPUT_PATH
+            if not os.path.exists(output_path):
+                logging.warning(f"Output path does not exist: {output_path}")
+                continue
+            
+            current_time = time.time()
+            
+            # Scan output folder for old files
+            for filename in os.listdir(output_path):
+                file_path = os.path.join(output_path, filename)
+                if not os.path.isfile(file_path):
+                    continue
+                
+                file_age = current_time - os.path.getmtime(file_path)
+                if file_age > 86400: # 24 hours
+                    try:
+                        os.remove(file_path)
+                        logging.info(f"Deleted old file: {filename} (age: {file_age / 3600:.1f} hours)")
+                        
+                        # Also remove from conversion_status if present
+                        with status_lock:
+                            conversion_id = os.path.splitext(filename)[0]
+                            if conversion_id in conversion_status:
+                                del conversion_status[conversion_id]
+                                logging.info(f"Removed {conversion_id} from conversion_status")
+                    except Exception as e:
+                        logging.error(f"Failed to delete file {filename}: {e}")
+    
     import threading
     threading.Thread(target=cleanup, daemon=True).start()

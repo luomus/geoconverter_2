@@ -70,7 +70,7 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
     Handle API conversion request - manages status tracking and task scheduling.
     
     Args:
-        conversion_id: Unique identifier (file name) for this conversion. E.g. HBF.12345
+        conversion_id: Unique identifier (file name) for this conversion. E.g. HBF_12345
         zip_path: Path to the input ZIP file
         language: Language for the column names ('fi', 'en', 'tech')
         geo_type: Type of geometry processing ('point', 'bbox', 'footprint')

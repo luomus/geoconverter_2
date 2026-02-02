@@ -116,8 +116,9 @@ async def convert_gis_to_table(
     summary="Convert uploaded ZIP file to a zipped GeoPackage",
     description="Upload a ZIP file containing TSV data ('occurrences.tsv') and convert it to a zipped GeoPackage format. ID is generated based on the original filename and parameters.",
     tags=["File Conversion"],
-    response_model=StatusResponse,
+    response_model=str,
     responses={
+        200: {"description": "Conversion started successfully. Returns the conversion ID string.", "content": {"text/plain": {"example": "dataset123_tech_point_wgs84"}}},
         400: {"model": ErrorResponse, "description": "Invalid file or parameters"},
         500: {"model": ErrorResponse, "description": "Conversion failed"}
     }
@@ -135,6 +136,7 @@ async def convert_with_file(
 
     # Create unique conversion ID with parameters
     base_id = os.path.splitext(file.filename)[0]
+    base_id = base_id.replace('.', '_')  # Sanitize base_id so that is also works in ArcGIS Pro
     id = f"{base_id}_{lang}_{geometryType}_{crs}" # Unique ID based on filename and params
 
     # Create a temporary file to store the uploaded zip

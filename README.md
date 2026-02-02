@@ -44,48 +44,53 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 - `crs`: Coordinate Reference System (CRS) for output - either `wgs84` or `euref`
 
 **Response:**
-- Returns a JSON response describing the status of conversion and path to download the output when conversion is ready
-- The conversion ID will include the parameters to ensure uniqueness: `{filename}_{lang}_{geometryType}_{crs}`
+- Returns a plain text string with the conversion ID (Content-Type: `text/plain`).
+- The conversion ID format ensures uniqueness: `{filename}_{lang}_{geometryType}_{crs}`
+- For large files, processing runs in the background — check `/status/{id}` for progress. Small files are processed synchronously but the endpoint still returns the conversion ID.
 
 **Example Request:**
 ```bash
 curl -X 'POST' 'http://127.0.0.1:8000/?lang=tech&geometryType=footprint&crs=wgs84' \
-    -H "Accept: application/json" \
+    -H "Accept: text/plain" \
     -H "Content-Type: multipart/form-data" \
     -F "file=@HBF.12345.zip"
 ```
 
 **Example Response:**
-```json
-{
-  "id": "HBF.12345_tech_footprint_wgs84",
-  "status": "processing",
-  "message": "Large file detected (15.2MB). Processing in background...",
-  "status_url": "/status/HBF.12345_tech_footprint_wgs84",
-  "download_url": "/output/HBF.12345_tech_footprint_wgs84",
-  "file_size_mb": 15.2
-}
+```
+HBF_12345_tech_footprint_wgs84
 ```
 
-### `/` (GET)
+You can then check status:
+```bash
+curl http://127.0.0.1:8000/status/HBF_12345_tech_footprint_wgs84
+```
 
-**Description:** Downloads and converts a file by ID from files stored on the FinBIF data warehouse server
+### `/{id}` (GET)
+
+**Description:** Start conversion of a file identified by `id` that is stored in the data warehouse. The `id` is provided as a path parameter.
+
+**Path parameters:**
+- `id`: ID for file download on the FinBIF server (path parameter)
 
 **Query parameters:**
-- `id`: ID for file download on the FinBIF server
 - `lang`: Language of the headers - one of `fi`, `en`, or `tech`
 - `geometryType`: Geometry type - one of `footprint`, `bbox`, or `point`
 - `crs`: Coordinate Reference System (CRS) for output - either `wgs84` or `euref`
 - `personToken`: Optional, user's personToken to check access rights for files with sensitive data
 
 **Response:**
-- Returns a JSON response describing the status of conversion and path to download the output when conversion is ready
-- The conversion ID will include the parameters to ensure uniqueness: `{id}_{lang}_{geometryType}_{crs}`
+- Returns a plain text string with the conversion ID (Content-Type: `text/plain`). Conversion starts (or existing conversion/output ID is returned). Check `/status/{id}` for progress.
 
 **Example Request:**
 ```bash
-curl -X 'GET' 'http://127.0.0.1:8000/?id=HBF.12345&lang=fi&geometryType=footprint&crs=wgs84&personToken=your_token_here' \
-    -H "Accept: application/json"
+curl -X 'GET' 'http://127.0.0.1:8000/HBF.12345?lang=fi&geometryType=footprint&crs=wgs84&personToken=your_token_here' \
+    -H "Accept: text/plain"
+```
+
+**Example Response:**
+```
+HBF.12345_fi_footprint_wgs84
 ```
 
 ### `/status/{id}` (GET)
@@ -179,7 +184,7 @@ cd geoconverter_2
 To prevent conflicts when converting the same file with different parameters, the system generates unique conversion IDs by combining the filename with the conversion parameters:
 
 - **Format**: `{filename}_{language}_{geometryType}_{crs}`
-- **Example**: `HBF.12345_fi_footprint_wgs84`
+- **Example**: `HBF_12345_fi_footprint_wgs84`
 
 This ensures that:
 - Multiple conversions of the same file with different parameters don't overwrite each other

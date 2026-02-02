@@ -70,7 +70,7 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
     Handle API conversion request - manages status tracking and task scheduling.
     
     Args:
-        conversion_id: Unique identifier (file name) for this conversion. E.g. HBF_12345
+        conversion_id: Unique identifier (file name) for this conversion. E.g. HBF.12345
         zip_path: Path to the input ZIP file
         language: Language for the column names ('fi', 'en', 'tech')
         geo_type: Type of geometry processing ('point', 'bbox', 'footprint')
@@ -174,7 +174,8 @@ def cleanup_files(*file_paths: str) -> None:
 
 def _extract_and_process_zip(zip_path: str, conversion_id: str, language: str, geo_type: str, crs: str, wkt_column: str) -> str:
     """Extract occurrences.txt from ZIP and process it to GeoPackage."""
-    output_gpkg = app_settings.OUTPUT_PATH + f'{conversion_id}.gpkg'
+    conversion_id_clean = conversion_id.replace('.', '_')  # Sanitize conversion_id so that it works in ArcGIS systems
+    output_gpkg = app_settings.OUTPUT_PATH + f'{conversion_id_clean}.gpkg'
     occurrence_file = "occurrences.txt"
     
     logging.debug(f"Reading occurrence file: {occurrence_file}...")

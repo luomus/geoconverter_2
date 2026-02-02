@@ -58,12 +58,12 @@ curl -X 'POST' 'http://127.0.0.1:8000/?lang=tech&geometryType=footprint&crs=wgs8
 
 **Example Response:**
 ```
-HBF_12345_tech_footprint_wgs84
+HBF.12345_tech_footprint_wgs84
 ```
 
 You can then check status:
 ```bash
-curl http://127.0.0.1:8000/status/HBF_12345_tech_footprint_wgs84
+curl http://127.0.0.1:8000/status/HBF.12345_tech_footprint_wgs84
 ```
 
 ### `/{id}` (GET)
@@ -184,7 +184,7 @@ cd geoconverter_2
 To prevent conflicts when converting the same file with different parameters, the system generates unique conversion IDs by combining the filename with the conversion parameters:
 
 - **Format**: `{filename}_{language}_{geometryType}_{crs}`
-- **Example**: `HBF_12345_fi_footprint_wgs84`
+- **Example**: `HBF.12345_fi_footprint_wgs84`
 
 This ensures that:
 - Multiple conversions of the same file with different parameters don't overwrite each other

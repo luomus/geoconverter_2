@@ -136,7 +136,6 @@ async def convert_with_file(
 
     # Create unique conversion ID with parameters
     base_id = os.path.splitext(file.filename)[0]
-    base_id = base_id.replace('.', '_')  # Sanitize base_id so that is also works in ArcGIS Pro
     id = f"{base_id}_{lang}_{geometryType}_{crs}" # Unique ID based on filename and params
 
     # Create a temporary file to store the uploaded zip
@@ -269,8 +268,7 @@ async def convert_with_id(
       raise HTTPException(status_code=403, detail="Permission denied.")
 
     # Create unique conversion ID with parameters
-    sanitized_id = id.replace('.', '_')  # Sanitize id
-    conversion_id = f"{sanitized_id}_{lang}_{geometryType}_{crs}"
+    conversion_id = f"{id}_{lang}_{geometryType}_{crs}"
     zip_path = get_settings().FILE_PATH + id + ".zip"
     return handle_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, False, original_filename=id)
 

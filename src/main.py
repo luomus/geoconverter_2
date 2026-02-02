@@ -269,6 +269,7 @@ async def convert_with_id(
       raise HTTPException(status_code=403, detail="Permission denied.")
 
     # Create unique conversion ID with parameters
+    id = id.replace('.', '_')  # Sanitize id
     conversion_id = f"{id}_{lang}_{geometryType}_{crs}"
     zip_path = get_settings().FILE_PATH + id + ".zip"
     return handle_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, False, original_filename=id)

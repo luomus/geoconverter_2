@@ -9,7 +9,7 @@ taxonConceptID	Taksonikäsitteen tunniste	Taxon Concept ID	object
 scientificName	Tieteellinen nimi	Scientific Name	object
 scientificNameAuthorship	Auktori	Scientific Name Authorship	object
 taxonRank	Taksonominen taso	Taxon Rank	category
-kingdom	Kunta	Kingdom	category
+kingdom	Eliökunta	Kingdom	category
 class	Luokka	Class	object
 order	Lahko	Order	object
 family	Heimo	Family	object
@@ -67,3 +67,4 @@ availableDate	Vastaanotettu Lajitietokeskuksessa	Date Available in FinBIF	object
 license	Lisenssi	License	category
 qualityIssues	Virheet	Quality Issues	object
 otherCatalogNumbers	Lisätunnisteet	Additional IDs	object
+county	Kunta	County	object

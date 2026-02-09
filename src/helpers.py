@@ -11,7 +11,49 @@ import numpy as np
 import geopandas as gpd
 import settings
 import dask.dataframe as dd
+import os
+from threading import Lock
+from time import time
 
+class ConversionStatusManager:
+    """Thread-safe manager for conversion status tracking."""
+    def __init__(self):
+        self._statuses: Dict = {}
+        self._lock = Lock()
+    
+    def update(self, conversion_id: str, status: str, **kwargs) -> None:
+        with self._lock:
+            existing = self._statuses.get(conversion_id, {})
+            self._statuses[conversion_id] = {
+                **existing,
+                "status": status,
+                "timestamp": time(),
+                "progress_percent": kwargs.pop("progress_percent", 0),
+                **kwargs
+            }
+    
+    def get(self, conversion_id: str) -> dict:
+        with self._lock:
+            return self._statuses.get(conversion_id, {})
+    
+    def has(self, conversion_id: str) -> bool:
+        with self._lock:
+            return conversion_id in self._statuses
+    
+    def get_status_value(self, conversion_id: str) -> Optional[str]:
+        with self._lock:
+            return self._statuses.get(conversion_id, {}).get("status")
+    
+    def get_all(self) -> Dict:
+        with self._lock:
+            return self._statuses.copy()
+    
+    def remove(self, conversion_id: str) -> None:
+        with self._lock:
+            if conversion_id in self._statuses:
+                del self._statuses[conversion_id]
+
+status_manager = ConversionStatusManager()
 app_settings = settings.Settings()
 log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
 
@@ -19,17 +61,6 @@ logging.basicConfig(
     level=log_level, 
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
-
-CRS_MAPPING = {
-    "euref": "EPSG:3067",
-    "wgs84": "EPSG:4326"
-}
-
-GEOMETRY_TYPE_MAPPING = {
-    "point": "points",
-    "bbox": "bbox",
-    "footprint": "original"
-}
 
 GEOMETRY_BUFFER_DISTANCE = 0.00001  # ~0.5 meters
 
@@ -169,3 +200,28 @@ def get_converters(column_types):
         **{col: convert_boolean_value for col, dtype in column_types.items() if dtype == 'bool'},
         **{col: convert_numeric_with_na for col, dtype in column_types.items() if dtype == 'int'}
     }
+
+def check_existing_conversion(conversion_id: str) -> Optional[str]:
+    """Check if conversion is already processing or complete. Returns conversion_id if should skip, None otherwise."""
+    if not status_manager.has(conversion_id):
+        return None
+    
+    current_status = status_manager.get_status_value(conversion_id)
+    if current_status == "processing":
+        logging.warning(f"Conversion ID {conversion_id} is already in use. Cancelling new request...")
+        return conversion_id
+    elif current_status == "complete":
+        logging.info(f"Conversion ID {conversion_id} has already been completed. Returning existing output...")
+        return conversion_id
+    
+    return None
+
+def cleanup_files(*file_paths: str) -> None:
+    """Safely remove multiple files."""
+    for file_path in file_paths:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logging.debug(f"Cleaned up file: {file_path}")
+            except OSError as e:
+                logging.warning(f"Failed to clean up {file_path}: {e}")

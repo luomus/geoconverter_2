@@ -6,7 +6,7 @@ import shutil
 import tempfile
 import os
 import time
-from table_to_gpkg import handle_conversion_request
+from table_to_gpkg import handle_conversion_request, handle_tsv_conversion_request
 from dw_service import is_valid_download_request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -134,16 +134,27 @@ async def convert_with_file(
 
     logging.info(f"Received file: {file.filename}, language: {lang}, geometryType: {geometryType}, crs: {crs}")
 
-    # Create unique conversion ID with parameters
-    base_id = os.path.splitext(file.filename)[0]
-    id = f"{base_id}_{lang}_{geometryType}_{crs}" # Unique ID based on filename and params
+    # Check if content type is TSV, process as TSV directly (simple data download)
+    if file.content_type == "text/tab-separated-values":
+        base_id = os.path.splitext(file.filename)[0]
+        id = f"{base_id}_{lang}_{geometryType}_{crs}"
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".tsv") as temp_tsv:
+            shutil.copyfileobj(file.file, temp_tsv)
+            temp_tsv_path = temp_tsv.name
+        
+        return handle_tsv_conversion_request(id, temp_tsv_path, lang, geometryType, crs, background_tasks, original_filename=base_id)
 
-    # Create a temporary file to store the uploaded zip
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
-        shutil.copyfileobj(file.file, temp_zip)
-        temp_zip_path = temp_zip.name
+    else: # Process zip files (citable data download)
+        base_id = os.path.splitext(file.filename)[0]
+        id = f"{base_id}_{lang}_{geometryType}_{crs}"
 
-    return handle_conversion_request(id, temp_zip_path, lang, geometryType, crs, background_tasks, True, original_filename=base_id)
+        # Create a temporary file to store the uploaded zip
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
+            shutil.copyfileobj(file.file, temp_zip)
+            temp_zip_path = temp_zip.name
+
+        return handle_conversion_request(id, temp_zip_path, lang, geometryType, crs, background_tasks, True, original_filename=base_id)
 
 @app.get("/status/{id}",
     summary="Check conversion status",
@@ -158,23 +169,24 @@ async def convert_with_file(
 async def get_status(id: str = Path(..., description="Conversion ID to check")):
     """ Endpoint to check the status of a conversion. """
     logging.info(f"Checking status for conversion ID: {id}")
-    from table_to_gpkg import conversion_status, status_lock
-    with status_lock:
-        if id not in conversion_status:
-            raise HTTPException(status_code=404, detail="Conversion ID not found.")
-        status = conversion_status[id]
-        
-        response_data = {
-            "id": id,
-            "status": status["status"],
-            "progress_percent": status.get("progress_percent", 0)
-        }
-        
-        # Return 500 status code if conversion failed
-        if status["status"] == "failed":
-            return JSONResponse(content=response_data, status_code=500)
-        
-        return response_data
+    from helpers import status_manager
+    
+    if not status_manager.has(id):
+        raise HTTPException(status_code=404, detail="Conversion ID not found.")
+    
+    status = status_manager.get(id)
+    
+    response_data = {
+        "id": id,
+        "status": status["status"],
+        "progress_percent": status.get("progress_percent", 0)
+    }
+    
+    # Return 500 status code if conversion failed
+    if status["status"] == "failed":
+        return JSONResponse(content=response_data, status_code=500)
+    
+    return response_data
     
 @app.get("/health",
     summary="Health check",
@@ -184,10 +196,10 @@ async def get_status(id: str = Path(..., description="Conversion ID to check")):
 )
 async def health_check():
     """ Health check endpoint to verify the service is running."""
-    from table_to_gpkg import conversion_status, status_lock
+    from helpers import status_manager
     
-    with status_lock:
-        processing_count = sum(s["status"] == "processing" for s in conversion_status.values())
+    all_statuses = status_manager.get_all()
+    processing_count = sum(s["status"] == "processing" for s in all_statuses.values())
     
     return {
         "status": "ok",
@@ -222,24 +234,25 @@ async def get_output(
     else:
         base_id = id
 
-    from table_to_gpkg import conversion_status, status_lock
-    with status_lock:
-        if id not in conversion_status:
-            raise HTTPException(status_code=404, detail="Conversion ID not found.")
-        status = conversion_status[id]
-        if status["status"] != "complete":
-            raise HTTPException(status_code=400, detail="Conversion not completed yet.")
-        output_path = status["output"]
-        if not os.path.exists(output_path):
-            raise HTTPException(status_code=404, detail="Output file not found.")
-        uploaded_file = status['uploaded_file']
-        if not uploaded_file and not is_valid_download_request(base_id, personToken):
-            raise HTTPException(status_code=403, detail="Permission denied.")
-        
-        # Use original filename if available, otherwise use the conversion ID
-        original_filename = status.get("original_filename", base_id)
-        logging.debug(f"Download request - ID: {id}, base_id: {base_id}, original_filename from status: {original_filename}, uploaded_file: {uploaded_file}")
-        return FileResponse(output_path, filename=f"{original_filename}.zip", media_type="application/zip")
+    from helpers import status_manager
+    
+    if not status_manager.has(id):
+        raise HTTPException(status_code=404, detail="Conversion ID not found.")
+    
+    status = status_manager.get(id)
+    if status["status"] != "complete":
+        raise HTTPException(status_code=400, detail="Conversion not completed yet.")
+    output_path = status["output"]
+    if not os.path.exists(output_path):
+        raise HTTPException(status_code=404, detail="Output file not found.")
+    uploaded_file = status['uploaded_file']
+    if not uploaded_file and not is_valid_download_request(base_id, personToken):
+        raise HTTPException(status_code=403, detail="Permission denied.")
+    
+    # Use original filename if available, otherwise use the conversion ID
+    original_filename = status.get("original_filename", base_id)
+    logging.debug(f"Download request - ID: {id}, base_id: {base_id}, original_filename from status: {original_filename}, uploaded_file: {uploaded_file}")
+    return FileResponse(output_path, filename=f"{original_filename}.zip", media_type="application/zip")
 
 @app.get("/{id}",
     summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
@@ -279,7 +292,7 @@ async def cleanup_old_files():
         logging.info("Starting cleanup thread...")
         while True:
             time.sleep(3600)  # Run cleanup every hour
-            from table_to_gpkg import conversion_status, status_lock
+            from helpers import status_manager
             
             output_path = get_settings().OUTPUT_PATH
             if not os.path.exists(output_path):
@@ -300,12 +313,11 @@ async def cleanup_old_files():
                         os.remove(file_path)
                         logging.info(f"Deleted old file: {filename} (age: {file_age / 3600:.1f} hours)")
                         
-                        # Also remove from conversion_status if present
-                        with status_lock:
-                            conversion_id = os.path.splitext(filename)[0]
-                            if conversion_id in conversion_status:
-                                del conversion_status[conversion_id]
-                                logging.info(f"Removed {conversion_id} from conversion_status")
+                        # Also remove from status_manager if present
+                        conversion_id = os.path.splitext(filename)[0]
+                        if status_manager.has(conversion_id):
+                            status_manager.remove(conversion_id)
+                            logging.info(f"Removed {conversion_id} from status tracking")
                     except Exception as e:
                         logging.error(f"Failed to delete file {filename}: {e}")
     

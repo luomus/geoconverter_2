@@ -60,7 +60,7 @@ isStateLand	Valtion maalla	State Land	bool
 coordinateAccuracy	Koordinaattien tarkkuus (m)	Coordinate Accuracy (m)	int
 footprintWKT	WGS84 geometria	Footprint WKT	object
 gridCellYKJ	YKJ kymppiruutu	YKJ 10km Grid Cell	object
-occurrenceRemarks	Lisätiedot havainnost	Occurrence Remarks	object
+occurrenceRemarks	Lisätiedot havainnosta	Occurrence Remarks	object
 eventRemarks	Lisätiedot keruutapahtumasta	Event Remarks	object
 additionalIDs	Lisätunnisteet	Additional IDs	object
 availableDate	Vastaanotettu Lajitietokeskuksessa	Date Available in FinBIF	object

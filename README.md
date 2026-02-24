@@ -36,7 +36,7 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 
 ### `/` (POST)
 
-**Description:** Converts a ZIP file containing TSV data into a zipped GeoPackage. The TSV file should have the same schema and content as a downloadable file from FinBIF.
+**Description:** Accepts either a ZIP file containing TSV data or a TSV file uploaded directly, and converts it into a zipped GeoPackage. The TSV (or TSV inside ZIP) should have the same schema and content as a downloadable file from FinBIF.
 
 **Query parameters:**
 - `lang`: Language of the headers - one of `fi`, `en`, or `tech`
@@ -48,13 +48,23 @@ curl -X 'POST' 'http://127.0.0.1:8000/convert-to-table' \
 - The conversion ID format ensures uniqueness: `{filename}_{lang}_{geometryType}_{crs}`
 - For large files, processing runs in the background — check `/status/{id}` for progress. Small files are processed synchronously but the endpoint still returns the conversion ID.
 
-**Example Request:**
+**Example Request (ZIP):**
 ```bash
-curl -X 'POST' 'http://127.0.0.1:8000/?lang=tech&geometryType=footprint&crs=wgs84' \
+curl -X 'POST' 'http://127.0.0.1:8000/?lang=tech&geometryTypefootprint&crs=wgs84' \
     -H "Accept: text/plain" \
     -H "Content-Type: multipart/form-data" \
     -F "file=@HBF.12345.zip"
 ```
+
+**Example Request (direct TSV):**
+```bash
+curl -X 'POST' 'http://127.0.0.1:8000/?lang=tech&geometryType=footprint&crs=wgs84' \
+    -H "Accept: text/plain" \
+    -H "Content-Type: multipart/form-data" \
+    -F "file=@HBF.12345.tsv"
+```
+
+> Note: when uploading a plain TSV the service detects the file by extension or content-type (`text/tab-separated-values`) and processes it directly.
 
 **Example Response:**
 ```
@@ -170,6 +180,14 @@ cd geoconverter_2
        -H "Accept: application/json" \
        -H "Content-Type: multipart/form-data" \
        -F "file=@test_data/HBF.12345.zip"
+   ```
+
+   Or upload the TSV directly:
+   ```bash
+   curl -X 'POST' 'http://127.0.0.1:8000/?lang=fi&geometryType=footprint&crs=euref' \
+       -H "Accept: application/json" \
+       -H "Content-Type: multipart/form-data" \
+       -F "file=@test_data/HBF.12345.tsv"
    ```
 
 4. Check service health:

@@ -72,7 +72,7 @@ class ConversionJob:
 # MAIN CONVERSION WORKFLOW (STEP 1)
 # ============================================================================
 
-def handle_conversion_request(conversion_id: str, zip_path: str, language: str, geo_type: str, crs: str, background_tasks, uploaded_file: bool, original_filename: Optional[str] = None) -> Union[FileResponse, dict]:
+def handle_zip_conversion_request(conversion_id: str, zip_path: str, language: str, geo_type: str, crs: str, background_tasks, uploaded_file: bool, original_filename: Optional[str] = None) -> Union[FileResponse, dict]:
     """
     Handle API conversion request - manages status tracking and task scheduling.
     
@@ -104,7 +104,7 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
         return existing
 
     file_size = os.path.getsize(job.zip_path)
-    logging.info(f"Starting conversion for ID: {job.conversion_id}, zip_path: {job.zip_path}, file size: {file_size}")
+    logging.info(f"Starting ZIP conversion for ID: {job.conversion_id}, zip_path: {job.zip_path}, file size: {file_size}")
 
     status_manager.update(job.conversion_id, "processing", uploaded_file=job.uploaded_file, original_filename=job.original_filename)
     
@@ -124,10 +124,34 @@ def handle_conversion_request(conversion_id: str, zip_path: str, language: str, 
 
         return job.conversion_id
 
-def handle_tsv_conversion_request(id, tsv_path, lang, geometryType, crs, background_tasks, original_filename):
+def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: str, geo_type: str, crs: str, background_tasks, original_filename: Optional[str] = None) -> Union[FileResponse, dict]:
     """Handle conversion request for direct TSV file."""
-    # TODO: Implement TSV-only conversion logic
-    pass
+    job = ConversionJob(
+        conversion_id=conversion_id,
+        zip_path=tsv_path,  # Reuse zip_path field for TSV path
+        language=language,
+        geo_type=geo_type,
+        crs=crs,
+        uploaded_file=True,
+        original_filename=original_filename
+    )
+    
+    # Check for existing conversion
+    existing = check_existing_conversion(job.conversion_id)
+    if existing:
+        return existing
+
+    file_size = os.path.getsize(job.zip_path)
+    logging.info(f"Starting TSV conversion for ID: {job.conversion_id}, tsv_path: {job.zip_path}, file size: {file_size}")
+
+    status_manager.update(job.conversion_id, "processing", uploaded_file=job.uploaded_file, original_filename=job.original_filename)
+    
+    try:
+        convert_file(job)
+    except Exception as e:
+        raise
+    return job.conversion_id
+
 
 # ============================================================================
 # FILE PROCESSING
@@ -167,6 +191,23 @@ def create_output_zip(job: ConversionJob, cleanup_source: bool = False) -> str:
 
     return zip_path_out
 
+def create_output_zip_simple(job: ConversionJob, cleanup_source: bool = False) -> str:
+    """Create output ZIP containing only the GPKG file."""
+    logging.debug(f"Creating simple output ZIP with GPKG: {job.output_gpkg}")
+    zip_path_out = app_settings.OUTPUT_PATH + job.conversion_id + '.zip'
+
+    with ZipFile(zip_path_out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        if os.path.exists(job.output_gpkg):
+            zout.write(job.output_gpkg, arcname=os.path.basename(job.output_gpkg))
+            logging.debug(f"Added {job.output_gpkg} to zip {zip_path_out}")
+        else:
+            logging.warning(f"GPKG file not found: {job.output_gpkg}")
+
+    if cleanup_source:
+        cleanup_files(job.output_gpkg)
+
+    return zip_path_out
+
 def convert_file(job: ConversionJob) -> None:
     """Process file conversion from ZIP/TSV to GeoPackage."""
     try:
@@ -174,8 +215,11 @@ def convert_file(job: ConversionJob) -> None:
 
         if job.zip_path.endswith(".zip"):
             final_output = _extract_and_process_zip(job)
+        elif job.zip_path.endswith(".tsv"):
+            process_tsv_data_simple(job, job.zip_path, cleanup_temp=False, compress_output=True)
+            final_output = app_settings.OUTPUT_PATH + f"{job.conversion_id}.zip"
         else:
-            logging.warning(f"Only ZIP files are supported. Received {job.zip_path}. Skipping conversion.")
+            logging.warning(f"Only ZIP and TSV files are supported. Received {job.zip_path}. Skipping conversion.")
             return
             
         if not os.path.exists(final_output):
@@ -294,6 +338,23 @@ def read_tsv_as_dask_dataframe(file_path: str, job: ConversionJob) -> dd.DataFra
 
     return ddf
 
+def read_tsv_simple(file_path: str, wkt_column: str = 'WGS84 WKT') -> dd.DataFrame:
+    """Read TSV file with standard headers (no multi-language rows)."""
+    ddf = dd.read_csv(
+        file_path,
+        sep="\t",
+        assume_missing=True,
+        quoting=3,
+        on_bad_lines="skip",
+        encoding="utf-8",
+        blocksize=CHUNK_SIZE,
+        dtype=str
+    )
+
+    ddf = process_wkt_geometry(ddf, wkt_column)
+
+    return ddf
+
 def process_tsv_data(
     job: ConversionJob,
     temp_file_path: str,
@@ -341,4 +402,50 @@ def process_tsv_data(
 
         if cleanup_temp:
             cleanup_files(temp_file_path)
+
+def process_tsv_data_simple(
+    job: ConversionJob,
+    tsv_file_path: str,
+    cleanup_temp: bool = False, 
+    compress_output: bool = True
+) -> None:
+    """Process TSV data with standard headers (no multi-language rows)."""
+    created = False
+    try:
+        ddf = read_tsv_simple(tsv_file_path, wkt_column='WGS84 WKT')
+
+        ddf = apply_geometry_transformation(ddf, job.mapped_geo_type)
+
+        logging.debug(f"Writing to GeoPackage {job.output_gpkg}...")
+
+        delayed_partitions = ddf.to_delayed()
+        total_partitions = len(delayed_partitions)
+
+        for idx, partition in enumerate(delayed_partitions):
+            progress_percent = min(int(((idx + 1) / total_partitions) * 100), 99)
+            status_manager.update(job.conversion_id, "processing", progress_percent=progress_percent)
+            logging.debug(f"Writing partition {idx + 1} / {total_partitions}... ({progress_percent}%)")
+            wrote = write_partition_to_geopackage(
+                partition,
+                job.mapped_crs,
+                job.output_gpkg,
+                job.mapped_geo_type,
+                append=created
+            )
+            if wrote and not created:
+                created = True
+        
+        # Set to 99% when done processing partitions (100% only when status is "complete")
+        status_manager.update(job.conversion_id, "processing", progress_percent=99)
+
+        # Check if GPKG was actually created
+        if not created or not os.path.exists(job.output_gpkg):
+            raise ValueError(f"No valid geometries found in the data. GPKG file could not be created.")
+
+    finally:
+        if compress_output and created:
+            create_output_zip_simple(job, cleanup_source=True)
+
+        if cleanup_temp:
+            cleanup_files(tsv_file_path)
 

@@ -6,7 +6,7 @@ import shutil
 import tempfile
 import os
 import time
-from table_to_gpkg import handle_conversion_request, handle_tsv_conversion_request
+from table_to_gpkg import handle_zip_conversion_request, handle_tsv_conversion_request
 from dw_service import is_valid_download_request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -132,29 +132,30 @@ async def convert_with_file(
 ):
     """API endpoint to receive ZIP TSV file and return a GeoPackage."""
 
-    logging.info(f"Received file: {file.filename}, language: {lang}, geometryType: {geometryType}, crs: {crs}")
+    logging.info(f"Received file: {file.filename}, content-type: {file.content_type}, language: {lang}, geometryType: {geometryType}, crs: {crs}")
 
-    # Check if content type is TSV, process as TSV directly (simple data download)
-    if file.content_type == "text/tab-separated-values":
-        base_id = os.path.splitext(file.filename)[0]
-        id = f"{base_id}_{lang}_{geometryType}_{crs}"
-        
+    base_id = os.path.splitext(file.filename)[0]
+    id = f"{base_id}_{lang}_{geometryType}_{crs}"
+
+    # Check if TSV file by extension or content type
+    is_tsv = (file.filename.lower().endswith('.tsv') or 
+              file.content_type == "text/tab-separated-values")
+
+    if is_tsv:
+        # Process TSV directly (simple data download)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".tsv") as temp_tsv:
             shutil.copyfileobj(file.file, temp_tsv)
             temp_tsv_path = temp_tsv.name
         
         return handle_tsv_conversion_request(id, temp_tsv_path, lang, geometryType, crs, background_tasks, original_filename=base_id)
 
-    else: # Process zip files (citable data download)
-        base_id = os.path.splitext(file.filename)[0]
-        id = f"{base_id}_{lang}_{geometryType}_{crs}"
-
-        # Create a temporary file to store the uploaded zip
+    else:
+        # Process zip files (citable data download)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
             shutil.copyfileobj(file.file, temp_zip)
             temp_zip_path = temp_zip.name
 
-        return handle_conversion_request(id, temp_zip_path, lang, geometryType, crs, background_tasks, True, original_filename=base_id)
+        return handle_zip_conversion_request(id, temp_zip_path, lang, geometryType, crs, background_tasks, True, original_filename=base_id)
 
 @app.get("/status/{id}",
     summary="Check conversion status",
@@ -283,7 +284,7 @@ async def convert_with_id(
     # Create unique conversion ID with parameters
     conversion_id = f"{id}_{lang}_{geometryType}_{crs}"
     zip_path = get_settings().FILE_PATH + id + ".zip"
-    return handle_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, False, original_filename=id)
+    return handle_zip_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, False, original_filename=id)
 
 @app.on_event("startup")
 async def cleanup_old_files():

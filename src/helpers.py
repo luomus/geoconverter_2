@@ -6,6 +6,7 @@ from shapely.geometry import (
 )
 from shapely.wkt import loads
 import logging
+from collections import defaultdict
 from typing import Optional, Any, Dict
 import numpy as np
 import geopandas as gpd
@@ -189,10 +190,10 @@ def apply_geometry_transformation(gdf: gpd.GeoDataFrame, geom_type: str) -> gpd.
     else:  # original/footprint
         return result_gdf
 
-def get_default_column_types(language, dtypes_path) -> Dict[str, str]:
-    """Get default column type mappings for TSV data."""
+def get_default_column_types(language, dtypes_path) -> defaultdict:
+    """Get default column type mappings for TSV data. Unknown columns default to 'object'."""
     df = pd.read_csv(dtypes_path, delimiter='\t', dtype=str)
-    dtypes = dict(zip(df[language], df["dtype"]))
+    dtypes = defaultdict(lambda: 'object', zip(df[language], df["dtype"]))
     return dtypes
 
 def get_converters(column_types):

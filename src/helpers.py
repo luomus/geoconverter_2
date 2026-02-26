@@ -89,7 +89,7 @@ def safely_parse_wkt(wkt_string: str) -> Optional[Any]:
         return geom
             
     except (ShapelyError, Exception) as e:
-        logging.warning(f"Failed to convert WKT '{wkt_string}': {e}")
+        #logging.warning(f"Failed to convert WKT '{wkt_string}': {e}")
         return None
     
 

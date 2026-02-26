@@ -124,7 +124,7 @@ def handle_zip_conversion_request(conversion_id: str, zip_path: str, language: s
 
         return job.conversion_id
 
-def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: str, geo_type: str, crs: str, background_tasks, original_filename: Optional[str] = None) -> Union[FileResponse, dict]:
+def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: str, geo_type: str, crs: str, background_tasks) -> Union[FileResponse, dict]:
     """Handle conversion request for direct TSV file."""
     job = ConversionJob(
         conversion_id=conversion_id,
@@ -133,7 +133,7 @@ def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: s
         geo_type=geo_type,
         crs=crs,
         is_user_upload=True,
-        original_filename=original_filename
+        original_filename="laji-data"
     )
     
     # Check for existing conversion
@@ -181,7 +181,7 @@ def create_output_zip(job: ConversionJob, cleanup_source: bool = False) -> str:
 
         # Finally, add the generated GPKG to the root of the output zip
         if os.path.exists(job.output_gpkg):
-            zout.write(job.output_gpkg, arcname=os.path.basename(job.output_gpkg))
+            zout.write(job.output_gpkg, arcname=f"{job.original_filename}.gpkg")
             logging.debug(f"Added {job.output_gpkg} to zip {zip_path_out}")
         else:
             logging.warning(f"GPKG file not found: {job.output_gpkg}")
@@ -198,7 +198,7 @@ def create_output_zip_simple(job: ConversionJob, cleanup_source: bool = False) -
 
     with ZipFile(zip_path_out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
         if os.path.exists(job.output_gpkg):
-            zout.write(job.output_gpkg, arcname=os.path.basename(job.output_gpkg))
+            zout.write(job.output_gpkg, arcname=f"{job.original_filename}.gpkg")
             logging.debug(f"Added {job.output_gpkg} to zip {zip_path_out}")
         else:
             logging.warning(f"GPKG file not found: {job.output_gpkg}")
@@ -251,7 +251,7 @@ def _extract_and_process_zip(job: ConversionJob) -> str:
     
     logging.debug(f"Reading occurrence file: {occurrence_file}...")
     
-    with ZipFile(job.zip_path, "r") as zip_file:
+    with ZipFile(job.input_path, "r") as zip_file:
         with zip_file.open(occurrence_file) as source_file:
             with tempfile.NamedTemporaryFile(delete=False) as temp_file:
                 temp_file.write(source_file.read())

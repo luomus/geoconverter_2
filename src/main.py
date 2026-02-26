@@ -142,19 +142,18 @@ async def convert_with_file(
               file.content_type == "text/tab-separated-values")
 
     if is_tsv:
-        base_id = str(uuid.uuid4())
-        conversion_id = f"{base_id}_{lang}_{geometryType}_{crs}"
+        conversion_id = str(uuid.uuid4())
 
         # Process TSV directly (simple data download)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".tsv") as temp_tsv:
             shutil.copyfileobj(file.file, temp_tsv)
             temp_tsv_path = temp_tsv.name
         
-        return handle_tsv_conversion_request(conversion_id, temp_tsv_path, lang, geometryType, crs, background_tasks, original_filename=base_id)
+        return handle_tsv_conversion_request(conversion_id, temp_tsv_path, lang, geometryType, crs, background_tasks)
 
     else:
         base_id = os.path.splitext(file.filename)[0]
-        conversion_id = f"{base_id}_{lang}_{geometryType}_{crs}"
+        conversion_id = str(uuid.uuid4())
 
         # Process zip files (citable data download)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:

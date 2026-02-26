@@ -40,11 +40,11 @@ CHUNK_SIZE = "100MB"
 class ConversionJob:
     """Bundle of parameters for a conversion job."""
     conversion_id: str
-    zip_path: str
+    input_path: str
     language: str
     geo_type: str
     crs: str
-    uploaded_file: bool
+    is_user_upload: bool
     original_filename: Optional[str] = None
     
     @property
@@ -72,29 +72,29 @@ class ConversionJob:
 # MAIN CONVERSION WORKFLOW (STEP 1)
 # ============================================================================
 
-def handle_zip_conversion_request(conversion_id: str, zip_path: str, language: str, geo_type: str, crs: str, background_tasks, uploaded_file: bool, original_filename: Optional[str] = None) -> Union[FileResponse, dict]:
+def handle_zip_conversion_request(conversion_id: str, zip_path: str, language: str, geo_type: str, crs: str, background_tasks, is_user_upload: bool, original_filename: Optional[str] = None) -> Union[FileResponse, dict]:
     """
     Handle API conversion request - manages status tracking and task scheduling.
     
     Args:
         conversion_id: Unique identifier (file name) for this conversion. E.g. HBF.12345
-        zip_path: Path to the input ZIP file
+        zip_path: Path to the input file (ZIP or TSV)
         language: Language for the column names ('fi', 'en', 'tech')
         geo_type: Type of geometry processing ('point', 'bbox', 'footprint')
         crs: Coordinate reference system ('euref', 'wgs84')
         background_tasks: FastAPI background tasks manager
-        uploaded_file: Whether this is an uploaded file
+        is_user_upload: True if file was uploaded by user (skips auth check on download)
         
     Returns:
         FileResponse for small files, status dict for large files
     """
     job = ConversionJob(
         conversion_id=conversion_id,
-        zip_path=zip_path,
+        input_path=zip_path,
         language=language,
         geo_type=geo_type,
         crs=crs,
-        uploaded_file=uploaded_file,
+        is_user_upload=is_user_upload,
         original_filename=original_filename
     )
     
@@ -103,10 +103,10 @@ def handle_zip_conversion_request(conversion_id: str, zip_path: str, language: s
     if existing:
         return existing
 
-    file_size = os.path.getsize(job.zip_path)
-    logging.info(f"Starting ZIP conversion for ID: {job.conversion_id}, zip_path: {job.zip_path}, file size: {file_size}")
+    file_size = os.path.getsize(job.input_path)
+    logging.info(f"Starting ZIP conversion for ID: {job.conversion_id}, input_path: {job.input_path}, file size: {file_size}")
 
-    status_manager.update(job.conversion_id, "processing", uploaded_file=job.uploaded_file, original_filename=job.original_filename)
+    status_manager.update(job.conversion_id, "processing", is_user_upload=job.is_user_upload, original_filename=job.original_filename)
     
     if file_size < LARGE_FILE_THRESHOLD:
         # Small files: process immediately and clean up after
@@ -128,11 +128,11 @@ def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: s
     """Handle conversion request for direct TSV file."""
     job = ConversionJob(
         conversion_id=conversion_id,
-        zip_path=tsv_path,  # Reuse zip_path field for TSV path
+        input_path=tsv_path,
         language=language,
         geo_type=geo_type,
         crs=crs,
-        uploaded_file=True,
+        is_user_upload=True,
         original_filename=original_filename
     )
     
@@ -141,10 +141,10 @@ def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: s
     if existing:
         return existing
 
-    file_size = os.path.getsize(job.zip_path)
-    logging.info(f"Starting TSV conversion for ID: {job.conversion_id}, tsv_path: {job.zip_path}, file size: {file_size}")
+    file_size = os.path.getsize(job.input_path)
+    logging.info(f"Starting TSV conversion for ID: {job.conversion_id}, input_path: {job.input_path}, file size: {file_size}")
 
-    status_manager.update(job.conversion_id, "processing", uploaded_file=job.uploaded_file, original_filename=job.original_filename)
+    status_manager.update(job.conversion_id, "processing", is_user_upload=job.is_user_upload, original_filename=job.original_filename)
     
     try:
         convert_file(job)
@@ -159,10 +159,10 @@ def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: s
 
 def create_output_zip(job: ConversionJob, cleanup_source: bool = False) -> str:
     """Create output ZIP containing the GPKG and all original files except occurrences.txt."""
-    logging.debug(f"Creating output ZIP: {job.zip_path} with GPKG: {job.output_gpkg}")
+    logging.debug(f"Creating output ZIP: {job.input_path} with GPKG: {job.output_gpkg}")
     zip_path_out = app_settings.OUTPUT_PATH + job.conversion_id + '.zip'
 
-    with ZipFile(job.zip_path, "r") as zin, ZipFile(zip_path_out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+    with ZipFile(job.input_path, "r") as zin, ZipFile(zip_path_out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
         for zi in zin.infolist():
             # Skip the occurrences.txt at the root of the input zip
             if zi.filename == "occurrences.txt":
@@ -211,15 +211,15 @@ def create_output_zip_simple(job: ConversionJob, cleanup_source: bool = False) -
 def convert_file(job: ConversionJob) -> None:
     """Process file conversion from ZIP/TSV to GeoPackage."""
     try:
-        logging.debug(f"Processing {job.zip_path} -> {job.conversion_id}")
+        logging.debug(f"Processing {job.input_path} -> {job.conversion_id}")
 
-        if job.zip_path.endswith(".zip"):
+        if job.input_path.endswith(".zip"):
             final_output = _extract_and_process_zip(job)
-        elif job.zip_path.endswith(".tsv"):
-            process_tsv_data_simple(job, job.zip_path, cleanup_temp=False, compress_output=True)
+        elif job.input_path.endswith(".tsv"):
+            process_tsv_data_simple(job, job.input_path, cleanup_temp=False, compress_output=True)
             final_output = app_settings.OUTPUT_PATH + f"{job.conversion_id}.zip"
         else:
-            logging.warning(f"Only ZIP and TSV files are supported. Received {job.zip_path}. Skipping conversion.")
+            logging.warning(f"Only ZIP and TSV files are supported. Received {job.input_path}. Skipping conversion.")
             return
             
         if not os.path.exists(final_output):
@@ -231,7 +231,7 @@ def convert_file(job: ConversionJob) -> None:
             job.conversion_id, "complete", 
             output=final_output,
             file_size=os.path.getsize(final_output),
-            uploaded_file=job.uploaded_file,
+            is_user_upload=job.is_user_upload,
             original_filename=job.original_filename,
             progress_percent=100
         )
@@ -413,8 +413,6 @@ def process_tsv_data_simple(
     created = False
     try:
         ddf = read_tsv_simple(tsv_file_path, wkt_column='WGS84 WKT')
-
-        ddf = apply_geometry_transformation(ddf, job.mapped_geo_type)
 
         logging.debug(f"Writing to GeoPackage {job.output_gpkg}...")
 

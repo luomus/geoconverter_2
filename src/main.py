@@ -14,6 +14,9 @@ from typing import Literal, Optional
 import settings
 from gis_to_table import gis_to_table
 from email_notifications import notify_failure
+import uuid
+import threading
+
 
 # Pydantic models for API responses
 class StatusResponse(BaseModel):
@@ -114,7 +117,7 @@ async def convert_gis_to_table(
 
 @app.post("/",
     summary="Convert uploaded ZIP file to a zipped GeoPackage",
-    description="Upload a ZIP file containing TSV data ('occurrences.tsv') and convert it to a zipped GeoPackage format. ID is generated based on the original filename and parameters.",
+    description="Upload a ZIP file containing TSV data ('occurrences.tsv') or TSV file directly and convert it to a zipped GeoPackage format. ID is generated based on the original filename and parameters.",
     tags=["File Conversion"],
     response_model=str,
     responses={
@@ -134,30 +137,33 @@ async def convert_with_file(
 
     logging.info(f"Received file: {file.filename}, content-type: {file.content_type}, language: {lang}, geometryType: {geometryType}, crs: {crs}")
 
-    base_id = os.path.splitext(file.filename)[0]
-    id = f"{base_id}_{lang}_{geometryType}_{crs}"
-
     # Check if TSV file by extension or content type
     is_tsv = (file.filename.lower().endswith('.tsv') or 
               file.content_type == "text/tab-separated-values")
 
     if is_tsv:
+        base_id = str(uuid.uuid4())
+        conversion_id = f"{base_id}_{lang}_{geometryType}_{crs}"
+
         # Process TSV directly (simple data download)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".tsv") as temp_tsv:
             shutil.copyfileobj(file.file, temp_tsv)
             temp_tsv_path = temp_tsv.name
         
-        return handle_tsv_conversion_request(id, temp_tsv_path, lang, geometryType, crs, background_tasks, original_filename=base_id)
+        return handle_tsv_conversion_request(conversion_id, temp_tsv_path, lang, geometryType, crs, background_tasks, original_filename=base_id)
 
     else:
+        base_id = os.path.splitext(file.filename)[0]
+        conversion_id = f"{base_id}_{lang}_{geometryType}_{crs}"
+
         # Process zip files (citable data download)
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_zip:
             shutil.copyfileobj(file.file, temp_zip)
             temp_zip_path = temp_zip.name
 
-        return handle_zip_conversion_request(id, temp_zip_path, lang, geometryType, crs, background_tasks, True, original_filename=base_id)
+        return handle_zip_conversion_request(conversion_id, temp_zip_path, lang, geometryType, crs, background_tasks, is_user_upload=True, original_filename=base_id)
 
-@app.get("/status/{id}",
+@app.get("/status/{conversion_id}",
     summary="Check conversion status",
     description="Get the current status of a file conversion process",
     tags=["Status"],
@@ -167,18 +173,18 @@ async def convert_with_file(
         500: {"model": ErrorResponse, "description": "Conversion failed"}
     }
 )
-async def get_status(id: str = Path(..., description="Conversion ID to check")):
+async def get_status(conversion_id: str = Path(..., description="Conversion ID to check")):
     """ Endpoint to check the status of a conversion. """
-    logging.info(f"Checking status for conversion ID: {id}")
+    logging.info(f"Checking status for conversion ID: {conversion_id}")
     from helpers import status_manager
     
-    if not status_manager.has(id):
+    if not status_manager.has(conversion_id):
         raise HTTPException(status_code=404, detail="Conversion ID not found.")
     
-    status = status_manager.get(id)
+    status = status_manager.get(conversion_id)
     
     response_data = {
-        "id": id,
+        "id": conversion_id,
         "status": status["status"],
         "progress_percent": status.get("progress_percent", 0)
     }
@@ -207,7 +213,7 @@ async def health_check():
         "processing": f"{processing_count} conversions right now"
     }
 
-@app.get("/output/{id}",
+@app.get("/output/{conversion_id}",
     summary="Download conversion output",
     description="Download the converted file for a completed conversion",
     tags=["File Download"],
@@ -219,43 +225,32 @@ async def health_check():
     }
 )
 async def get_output(
-    id: str = Path(..., description="Conversion ID"),
+    conversion_id: str = Path(..., description="Conversion ID"),
     personToken: Optional[str] = Query(None, description="Authentication token for private data")
 ):
-    """ Endpoint to retrieve the output file for a completed conversion. TODO: Ensure which id should be in use?"""
-    logging.info(f"Retrieving output for conversion ID: {id}")
-
-    # Get the original base ID without language/geometryType/crs suffixes
-    if '_fi_' in id:
-        base_id = id.split('_fi_')[0]
-    elif '_en_' in id:
-        base_id = id.split('_en_')[0]
-    elif '_tech_' in id:
-        base_id = id.split('_tech_')[0]
-    else:
-        base_id = id
+    """ Endpoint to retrieve the output file for a completed conversion."""
+    logging.info(f"Retrieving output for conversion ID: {conversion_id}")
 
     from helpers import status_manager
     
-    if not status_manager.has(id):
+    if not status_manager.has(conversion_id):
         raise HTTPException(status_code=404, detail="Conversion ID not found.")
     
-    status = status_manager.get(id)
+    status = status_manager.get(conversion_id)
     if status["status"] != "complete":
         raise HTTPException(status_code=400, detail="Conversion not completed yet.")
     output_path = status["output"]
     if not os.path.exists(output_path):
         raise HTTPException(status_code=404, detail="Output file not found.")
-    uploaded_file = status['uploaded_file']
-    if not uploaded_file and not is_valid_download_request(base_id, personToken):
+    is_user_upload = status['is_user_upload']
+    original_filename = status["original_filename"]
+    if not is_user_upload and not is_valid_download_request(original_filename, personToken):
         raise HTTPException(status_code=403, detail="Permission denied.")
     
-    # Use original filename if available, otherwise use the conversion ID
-    original_filename = status.get("original_filename", base_id)
-    logging.debug(f"Download request - ID: {id}, base_id: {base_id}, original_filename from status: {original_filename}, uploaded_file: {uploaded_file}")
+    logging.debug(f"Download request - conversion_id: {conversion_id}, original_filename: {original_filename}, is_user_upload: {is_user_upload}")
     return FileResponse(output_path, filename=f"{original_filename}.zip", media_type="application/zip")
 
-@app.get("/{id}",
+@app.get("/{dataset_id}",
     summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
     description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
     tags=["File Conversion"],
@@ -268,23 +263,23 @@ async def get_output(
 )
 async def convert_with_id(
     background_tasks: BackgroundTasks,
-    id: str = Path(..., description="ID of the file in the data warehouse"),
+    dataset_id: str = Path(..., description="ID of the file in the data warehouse"),
     lang: Literal["fi", "en", "tech"] = Query("tech", description="Language for field names (fi=Finnish, en=English, tech=technical)"),
     geometryType: Literal["bbox", "point", "footprint"] = Query(..., description="Geometry type to use"),
     crs: Literal["euref","wgs84"] = Query(..., description="Coordinate reference system"),
     personToken: Optional[str] = Query(None, description="Authentication token for private data")
 ):
-    """API enpoint to start converting file stored in dw"""
+    """API endpoint to start converting file stored in dw"""
 
-    logging.info(f"Received request to convert ID: {id}, lang: {lang}, geometryType: {geometryType}, crs: {crs}")
+    logging.info(f"Received request to convert dataset_id: {dataset_id}, lang: {lang}, geometryType: {geometryType}, crs: {crs}")
 
-    if not is_valid_download_request(id, personToken):
+    if not is_valid_download_request(dataset_id, personToken):
       raise HTTPException(status_code=403, detail="Permission denied.")
 
     # Create unique conversion ID with parameters
-    conversion_id = f"{id}_{lang}_{geometryType}_{crs}"
-    zip_path = get_settings().FILE_PATH + id + ".zip"
-    return handle_zip_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, False, original_filename=id)
+    conversion_id = f"{dataset_id}_{lang}_{geometryType}_{crs}"
+    zip_path = get_settings().FILE_PATH + dataset_id + ".zip"
+    return handle_zip_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, is_user_upload=False, original_filename=dataset_id)
 
 @app.on_event("startup")
 async def cleanup_old_files():
@@ -322,5 +317,4 @@ async def cleanup_old_files():
                     except Exception as e:
                         logging.error(f"Failed to delete file {filename}: {e}")
     
-    import threading
     threading.Thread(target=cleanup, daemon=True).start()

@@ -182,10 +182,10 @@ def apply_geometry_transformation(gdf: gpd.GeoDataFrame, geom_type: str) -> gpd.
     result_gdf = gdf.copy()
     
     if geom_type == "points":
-        result_gdf.geometry = result_gdf.geometry.centroid
+        result_gdf.geometry = gpd.GeoSeries(result_gdf.geometry, crs=result_gdf.crs).centroid
         return result_gdf
     elif geom_type == "bbox":
-        result_gdf.geometry = result_gdf.geometry.envelope
+        result_gdf.geometry = gpd.GeoSeries(result_gdf.geometry, crs=result_gdf.crs).envelope
         return result_gdf
     else:  # original/footprint
         return result_gdf

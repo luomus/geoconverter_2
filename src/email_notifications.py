@@ -4,8 +4,6 @@ from email.mime.text import MIMEText
 from datetime import datetime
 import settings
 
-app_settings = settings.Settings()
-
 # Setup logging
 app_settings = settings.Settings()
 log_level = getattr(logging, app_settings.LOGGING.upper(), logging.DEBUG)

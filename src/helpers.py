@@ -29,7 +29,7 @@ class ConversionStatusManager:
                 **existing,
                 "status": status,
                 "timestamp": time(),
-                "progress_percent": kwargs.pop("progress_percent", 0),
+                "progress_percent": kwargs.pop("progress_percent", existing.get("progress_percent", 0)),
                 **kwargs
             }
     

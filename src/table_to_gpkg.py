@@ -56,7 +56,7 @@ class ConversionJob:
     def output_gpkg(self) -> str:
         """Get the output GeoPackage path."""
         conversion_id_clean = self.conversion_id.replace('.', '_')
-        return app_settings.OUTPUT_PATH + f'{conversion_id_clean}.gpkg'
+        return os.path.join(app_settings.OUTPUT_PATH, f'{conversion_id_clean}.gpkg')
     
     @property
     def mapped_crs(self) -> str:
@@ -160,7 +160,7 @@ def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: s
 def create_output_zip(job: ConversionJob, cleanup_source: bool = False) -> str:
     """Create output ZIP containing the GPKG and all original files except occurrences.txt."""
     logging.debug(f"Creating output ZIP: {job.input_path} with GPKG: {job.output_gpkg}")
-    zip_path_out = app_settings.OUTPUT_PATH + job.conversion_id + '.zip'
+    zip_path_out = os.path.join(app_settings.OUTPUT_PATH, job.conversion_id + '.zip')
 
     with ZipFile(job.input_path, "r") as zin, ZipFile(zip_path_out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
         for zi in zin.infolist():
@@ -194,7 +194,7 @@ def create_output_zip(job: ConversionJob, cleanup_source: bool = False) -> str:
 def create_output_zip_simple(job: ConversionJob, cleanup_source: bool = False) -> str:
     """Create output ZIP containing only the GPKG file."""
     logging.debug(f"Creating simple output ZIP with GPKG: {job.output_gpkg}")
-    zip_path_out = app_settings.OUTPUT_PATH + job.conversion_id + '.zip'
+    zip_path_out = os.path.join(app_settings.OUTPUT_PATH, job.conversion_id + '.zip')
 
     with ZipFile(zip_path_out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
         if os.path.exists(job.output_gpkg):
@@ -217,7 +217,7 @@ def convert_file(job: ConversionJob) -> None:
             final_output = _extract_and_process_zip(job)
         elif job.input_path.endswith(".tsv"):
             process_tsv_data_simple(job, job.input_path, cleanup_temp=False, compress_output=True)
-            final_output = app_settings.OUTPUT_PATH + f"{job.conversion_id}.zip"
+            final_output = os.path.join(app_settings.OUTPUT_PATH, f"{job.conversion_id}.zip")
         else:
             logging.warning(f"Only ZIP and TSV files are supported. Received {job.input_path}. Skipping conversion.")
             return
@@ -259,7 +259,7 @@ def _extract_and_process_zip(job: ConversionJob) -> str:
 
     process_tsv_data(job, temp_file_path, cleanup_temp=True, compress_output=True)
     
-    return app_settings.OUTPUT_PATH + f"{job.conversion_id}.zip"
+    return os.path.join(app_settings.OUTPUT_PATH, f"{job.conversion_id}.zip")
 
 # ============================================================================
 # DATA PROCESSING
@@ -287,10 +287,6 @@ def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_ty
     if len(gdf) == 0:
         logging.warning("No valid geometries found in partition, skipping...")
         return False
-
-    if not isinstance(gdf, gpd.GeoDataFrame):
-        logging.warning("Partition was not a GeoDataFrame. Converting it to GeoDataFrame...")
-        gdf = gpd.GeoDataFrame(gdf, geometry="geometry", crs=crs)
 
     gdf = apply_geometry_transformation(gdf, geom_type)
     

@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import os
 import time
+import zipfile
 from table_to_gpkg import handle_zip_conversion_request, handle_tsv_conversion_request
 from dw_service import is_valid_download_request
 from fastapi.middleware.cors import CORSMiddleware
@@ -275,9 +276,13 @@ async def convert_with_id(
     if not is_valid_download_request(dataset_id, personToken):
       raise HTTPException(status_code=403, detail="Permission denied.")
 
-    # Create unique conversion ID with parameters
-    conversion_id = f"{dataset_id}_{lang}_{geometryType}_{crs}"
+    conversion_id = str(uuid.uuid4())
     zip_path = get_settings().FILE_PATH + dataset_id + ".zip"
+    tsv_path = get_settings().FILE_PATH + dataset_id + ".tsv"
+
+    if os.path.exists(tsv_path) and (not os.path.exists(zip_path) or not zipfile.is_zipfile(zip_path)):
+        return handle_tsv_conversion_request(conversion_id, tsv_path, lang, geometryType, crs, background_tasks, original_filename=dataset_id)
+
     return handle_zip_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, is_user_upload=False, original_filename=dataset_id)
 
 @app.on_event("startup")

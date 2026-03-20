@@ -124,7 +124,7 @@ def handle_zip_conversion_request(conversion_id: str, zip_path: str, language: s
 
         return job.conversion_id
 
-def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: str, geo_type: str, crs: str, background_tasks) -> Union[FileResponse, dict]:
+def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: str, geo_type: str, crs: str, background_tasks, original_filename: Optional[str] = "laji-data") -> Union[FileResponse, dict]:
     """Handle conversion request for direct TSV file."""
     job = ConversionJob(
         conversion_id=conversion_id,
@@ -133,7 +133,7 @@ def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: s
         geo_type=geo_type,
         crs=crs,
         is_user_upload=True,
-        original_filename="laji-data"
+        original_filename=original_filename
     )
     
     # Check for existing conversion

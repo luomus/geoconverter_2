@@ -1,5 +1,6 @@
 import logging
 import smtplib
+import traceback
 from email.mime.text import MIMEText
 from datetime import datetime
 import settings
@@ -49,7 +50,7 @@ def send_simple_email(subject: str, message: str) -> bool:
         logging.error(f"Failed to send email: {e}")
         return False
 
-def notify_failure(error_message: str, conversion_id: str = "") -> bool:
+def notify_failure(error_message: str, conversion_id: str = "", details: dict = None) -> bool:
     """Send notification when something fails."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     subject = "Geoconverter Error"
@@ -57,14 +58,20 @@ def notify_failure(error_message: str, conversion_id: str = "") -> bool:
     if conversion_id:
         subject += f" - ID: {conversion_id}"
 
+    details_section = ""
+    if details:
+        details_section = "\n" + "\n".join(f"        {k}: {v}" for k, v in details.items()) + "\n"
+
+    tb = traceback.format_exc()
+    traceback_section = f"\n        Traceback:\n{tb}" if tb and tb.strip() != "NoneType: None" else ""
+
     message = f"""
         Geoconverter Error Report
 
         Time: {timestamp}
         Environment: {app_settings.CONVERTER_ENV}
-        Conversion ID: {conversion_id or 'N/A'}
-
-        Error: {error_message}
+        Conversion ID: {conversion_id or 'N/A'}{details_section}
+        Error: {error_message}{traceback_section}
 
         Please check the application logs for more details.
     """

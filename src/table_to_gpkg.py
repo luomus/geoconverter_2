@@ -240,7 +240,9 @@ def convert_file(job: ConversionJob) -> None:
         logging.error(f"Error during conversion: {e}")
         
         # Send email notification for conversion failure
-        notify_failure(str(e), job.conversion_id)
+        notify_failure(str(e), job.conversion_id, details={
+            "Input": job.input_path,
+        })
         
         status_manager.update(job.conversion_id, "failed", error=str(e))
         cleanup_files(job.output_gpkg)

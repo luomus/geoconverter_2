@@ -294,8 +294,9 @@ def write_partition_to_geopackage(partition, crs: str, output_gpkg: str, geom_ty
     try:
         with write_lock:
             write_dataframe(
-                gdf, 
-                output_gpkg,
+                df=gdf, 
+                path=output_gpkg,
+                layer='occurrences',
                 driver="GPKG", 
                 encoding='utf8', 
                 promote_to_multi=True, 
@@ -316,6 +317,12 @@ def read_tsv_as_dask_dataframe(file_path: str, job: ConversionJob) -> dd.DataFra
     # Define converters for specific data types
     converters = get_converters(column_types)
 
+    # Read the header to build a complete dtype dict so unknown columns get
+    # 'object' instead of being inferred by dask (defaultdict's default factory
+    # is not triggered by pandas' `col in dtype` check).
+    header = pd.read_csv(file_path, sep='\t', nrows=0, skiprows=skipped_rows, encoding='utf-8')
+    full_dtype = {col: column_types[col] for col in header.columns}
+
     ddf = dd.read_csv(
         file_path,
         sep="\t",
@@ -325,7 +332,7 @@ def read_tsv_as_dask_dataframe(file_path: str, job: ConversionJob) -> dd.DataFra
         encoding="utf-8",
         blocksize=CHUNK_SIZE,
         header=0, # is always 0 as we skip rows
-        dtype=column_types,
+        dtype=full_dtype,
         skiprows=skipped_rows,  # Skip other header rows
         converters=converters
     )

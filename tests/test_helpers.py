@@ -32,7 +32,12 @@ from helpers import (
     buffer_and_dissolve_mixed_geometries,
     apply_geometry_transformation,
     get_default_column_types,
-    get_converters
+    get_converters,
+    cleanup_files,
+    process_wkt_geometry,
+    check_existing_conversion,
+    process_partition_for_geopackage,
+    write_gdf_to_geopackage
 )
 
 def test_safely_parse_wkt():
@@ -222,3 +227,82 @@ def test_get_converters():
     # str columns should not have converters
     assert "Suomenkielinen_nimi" not in result
     assert "Maarittaja" not in result
+
+
+def test_cleanup_files():
+    """Test cleanup_files with existing and non-existing files."""
+    # Create temporary files
+    with tempfile.NamedTemporaryFile(delete=False) as f1:
+        temp_file1 = f1.name
+    with tempfile.NamedTemporaryFile(delete=False) as f2:
+        temp_file2 = f2.name
+    
+    assert os.path.exists(temp_file1)
+    assert os.path.exists(temp_file2)
+    
+    # Clean up both files
+    cleanup_files(temp_file1, temp_file2)
+    
+    assert not os.path.exists(temp_file1)
+    assert not os.path.exists(temp_file2)
+    
+    # Should not raise error for non-existing files
+    cleanup_files("/nonexistent/file1.txt", "/nonexistent/file2.txt")
+
+
+def test_check_existing_conversion():
+    """Test check_existing_conversion function."""
+    # Test with conversion ID that doesn't exist
+    result = check_existing_conversion("non_existent_id")
+    assert result is None
+    
+    # Note: Full testing would require mocking _status_manager
+    # This test covers the basic None case
+
+
+def test_process_partition_for_geopackage():
+    """Test process_partition_for_geopackage with valid geometry."""
+    geometry = [Point(10, 20)]
+    gdf = gpd.GeoDataFrame(
+        {'id': [1]}, 
+        geometry=geometry,
+        crs="EPSG:4326"
+    )
+    ddf = dd.from_pandas(gdf, npartitions=1)
+    
+    result = process_partition_for_geopackage(ddf.get_partition(0), "EPSG:4326")
+    
+    assert result is not None
+    assert len(result) == 1
+    assert result.crs == "EPSG:4326"
+    assert result.geometry.iloc[0].equals(Point(10, 20))
+
+
+def test_process_partition_for_geopackage_empty():
+    """Test process_partition_for_geopackage with empty data."""
+    gdf = gpd.GeoDataFrame(
+        {'id': [], 'geometry': []},
+        crs="EPSG:4326"
+    )
+    ddf = dd.from_pandas(gdf, npartitions=1)
+    
+    result = process_partition_for_geopackage(ddf.get_partition(0), "EPSG:4326")
+    
+    assert result is None
+
+
+def test_write_gdf_to_geopackage():
+    """Test write_gdf_to_geopackage writes file successfully."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_path = os.path.join(tmpdir, "test.gpkg")
+        
+        gdf = gpd.GeoDataFrame(
+            {'id': [1, 2], 'name': ['A', 'B']},
+            geometry=[Point(0, 0), Point(1, 1)],
+            crs="EPSG:4326"
+        )
+        
+        result = write_gdf_to_geopackage(gdf, output_path, append=False)
+        
+        assert result is True
+        assert os.path.exists(output_path)

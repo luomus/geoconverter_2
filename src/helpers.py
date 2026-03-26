@@ -7,63 +7,29 @@ from shapely.geometry import (
 from shapely.wkt import loads
 import logging
 from collections import defaultdict
-from typing import Optional, Any, Dict
+from typing import Optional, Any
 import numpy as np
 import geopandas as gpd
 import settings
 import dask.dataframe as dd
 import os
-from threading import Lock
-from time import time
+from models import _status_manager, write_lock
+from pyogrio import write_dataframe
 
-class ConversionStatusManager:
-    """Thread-safe manager for conversion status tracking."""
-    def __init__(self):
-        self._statuses: Dict = {}
-        self._lock = Lock()
-    
-    def update(self, conversion_id: str, status: str, **kwargs) -> None:
-        with self._lock:
-            existing = self._statuses.get(conversion_id, {})
-            self._statuses[conversion_id] = {
-                **existing,
-                "status": status,
-                "timestamp": time(),
-                "progress_percent": kwargs.pop("progress_percent", existing.get("progress_percent", 0)),
-                **kwargs
-            }
-    
-    def get(self, conversion_id: str) -> dict:
-        with self._lock:
-            return self._statuses.get(conversion_id, {})
-    
-    def has(self, conversion_id: str) -> bool:
-        with self._lock:
-            return conversion_id in self._statuses
-    
-    def get_status_value(self, conversion_id: str) -> Optional[str]:
-        with self._lock:
-            return self._statuses.get(conversion_id, {}).get("status")
-    
-    def get_all(self) -> Dict:
-        with self._lock:
-            return self._statuses.copy()
-    
-    def remove(self, conversion_id: str) -> None:
-        with self._lock:
-            if conversion_id in self._statuses:
-                del self._statuses[conversion_id]
-
-status_manager = ConversionStatusManager()
 app_settings = settings.Settings()
-log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
-
-logging.basicConfig(
-    level=log_level, 
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
 
 GEOMETRY_BUFFER_DISTANCE = 0.00001  # ~0.5 meters
+
+def setup_logging():
+    """Configure application logging with settings from app_settings."""
+    log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
+    logging.basicConfig(
+        level=log_level, 
+        format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+
+# Initialize logging on module import
+setup_logging()
 
 def safely_parse_wkt(wkt_string: str) -> Optional[Any]:
     """Safely convert WKT string to Shapely geometry."""
@@ -92,7 +58,6 @@ def safely_parse_wkt(wkt_string: str) -> Optional[Any]:
         #logging.warning(f"Failed to convert WKT '{wkt_string}': {e}")
         return None
     
-
 def process_wkt_geometry(ddf: dd.DataFrame, wkt_column: str) -> dd.DataFrame:
     ddf = ddf[ddf[wkt_column].notnull()]  # Remove NA values #TODO: Maybe better to keep them in the future
     ddf = ddf[ddf[wkt_column].str.strip() != ""]  # Remove empty strings and whitespace
@@ -116,7 +81,6 @@ def convert_boolean_value(value: str) -> Optional[bool]:
         return False
     else:
         return None
-
 
 def convert_numeric_with_na(value: str) -> Optional[float]:
     """Convert string numeric values to float, handling NA values."""
@@ -155,7 +119,6 @@ def normalize_geometry_collection(geometry: Any) -> Any:
     
     # Handle mixed geometry types by buffering and dissolving
     return buffer_and_dissolve_mixed_geometries(geometries)
-
 
 def buffer_and_dissolve_mixed_geometries(geometries: list) -> Any:
     """Buffer points and lines, then dissolve into a MultiPolygon."""
@@ -204,10 +167,10 @@ def get_converters(column_types):
 
 def check_existing_conversion(conversion_id: str) -> Optional[str]:
     """Check if conversion is already processing or complete. Returns conversion_id if should skip, None otherwise."""
-    if not status_manager.has(conversion_id):
+    if not _status_manager.has(conversion_id):
         return None
     
-    current_status = status_manager.get_status_value(conversion_id)
+    current_status = _status_manager.get_status_value(conversion_id)
     if current_status == "processing":
         logging.warning(f"Conversion ID {conversion_id} is already in use. Cancelling new request...")
         return conversion_id
@@ -226,3 +189,44 @@ def cleanup_files(*file_paths: str) -> None:
                 logging.debug(f"Cleaned up file: {file_path}")
             except OSError as e:
                 logging.warning(f"Failed to clean up {file_path}: {e}")
+
+def process_partition_for_geopackage(partition, crs: str) -> Optional[gpd.GeoDataFrame]:
+    """Process a partition: compute, convert CRS, validate, and transform geometries.
+    Returns processed GeoDataFrame or None if no valid data."""
+    gdf = gpd.GeoDataFrame(partition.compute(), geometry="geometry", crs="EPSG:4326").to_crs(crs)
+
+    if gdf.empty:
+        logging.warning("The file is empty after crs conversion or computing, skipping...")
+        return None
+
+    valid_mask = (
+        gdf['geometry'].notna() & 
+        gdf['geometry'].is_valid & 
+        ~gdf['geometry'].is_empty
+    )
+    gdf = gdf[valid_mask].copy()
+
+    if len(gdf) == 0:
+        logging.warning("No valid geometries found in partition, skipping...")
+        return None
+
+    return gdf
+
+
+def write_gdf_to_geopackage(gdf: gpd.GeoDataFrame, output_gpkg: str, append: bool = True) -> bool:
+    """Write a GeoDataFrame to GeoPackage with thread safety. Returns True if successful."""
+    try:
+        with write_lock:
+            write_dataframe(
+                df=gdf, 
+                path=output_gpkg,
+                layer='occurrences',
+                driver="GPKG", 
+                encoding='utf8', 
+                promote_to_multi=True, 
+                append=append
+            )
+    except Exception as e:
+        logging.error(f"Failed to write partition to GeoPackage: {e}")
+        return False
+    return True

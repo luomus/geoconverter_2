@@ -7,7 +7,8 @@ import tempfile
 import os
 import time
 import zipfile
-from table_to_gpkg import handle_zip_conversion_request, handle_tsv_conversion_request
+from tsv_to_gpkg import handle_tsv_conversion_request
+from zip_to_gpkg import handle_zip_conversion_request
 from dw_service import is_valid_download_request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -17,6 +18,7 @@ from gis_to_table import gis_to_table
 from email_notifications import notify_failure
 import uuid
 import threading
+from models import _status_manager
 
 
 # Pydantic models for API responses
@@ -150,7 +152,7 @@ async def convert_with_file(
             shutil.copyfileobj(file.file, temp_tsv)
             temp_tsv_path = temp_tsv.name
         
-        return handle_tsv_conversion_request(conversion_id, temp_tsv_path, lang, geometryType, crs, background_tasks)
+        return handle_tsv_conversion_request(conversion_id, temp_tsv_path, lang, geometryType, crs)
 
     else:
         base_id = os.path.splitext(file.filename)[0]
@@ -176,12 +178,11 @@ async def convert_with_file(
 async def get_status(conversion_id: str = Path(..., description="Conversion ID to check")):
     """ Endpoint to check the status of a conversion. """
     logging.info(f"Checking status for conversion ID: {conversion_id}")
-    from helpers import status_manager
     
-    if not status_manager.has(conversion_id):
+    if not _status_manager.has(conversion_id):
         raise HTTPException(status_code=404, detail="Conversion ID not found.")
     
-    status = status_manager.get(conversion_id)
+    status = _status_manager.get(conversion_id)
     
     response_data = {
         "id": conversion_id,
@@ -203,9 +204,8 @@ async def get_status(conversion_id: str = Path(..., description="Conversion ID t
 )
 async def health_check():
     """ Health check endpoint to verify the service is running."""
-    from helpers import status_manager
     
-    all_statuses = status_manager.get_all()
+    all_statuses = _status_manager.get_all()
     processing_count = sum(s["status"] == "processing" for s in all_statuses.values())
     
     return {
@@ -231,12 +231,11 @@ async def get_output(
     """ Endpoint to retrieve the output file for a completed conversion."""
     logging.info(f"Retrieving output for conversion ID: {conversion_id}")
 
-    from helpers import status_manager
     
-    if not status_manager.has(conversion_id):
+    if not _status_manager.has(conversion_id):
         raise HTTPException(status_code=404, detail="Conversion ID not found.")
     
-    status = status_manager.get(conversion_id)
+    status = _status_manager.get(conversion_id)
     if status["status"] != "complete":
         raise HTTPException(status_code=400, detail="Conversion not completed yet.")
     output_path = status["output"]
@@ -251,11 +250,11 @@ async def get_output(
     return FileResponse(output_path, filename=f"{original_filename}.zip", media_type="application/zip")
 
 @app.get("/{dataset_id}",
-    summary="Convert TSV file from the data warehouse to a zipped GeoPackage",
-    description="Convert a TSV file that is stored in the data warehouse to a zipped GeoPackage format",
+    summary="Convert ZIP or TSV file from the data warehouse to a zipped GeoPackage",
+    description="Convert ZIP or TSV file that is stored in the data warehouse to a zipped GeoPackage format",
     tags=["File Conversion"],
     responses={
-        200: {"description": "Conversion started successfully. Returns the conversion ID string.", "content": {"text/plain": {"example": "dataset123_tech_point_wgs84"}}},
+        200: {"description": "Conversion started successfully. Returns the conversion ID string.", "content": {"text/plain": {"example": "48cdcf2f-4e8a-4b4a-a786-068ab8854b84"}}},
         403: {"model": ErrorResponse, "description": "Permission denied"},
         404: {"model": ErrorResponse, "description": "File not found in data warehouse"},
         500: {"model": ErrorResponse, "description": "Conversion failed"}
@@ -281,7 +280,7 @@ async def convert_with_id(
     tsv_path = get_settings().FILE_PATH + dataset_id + ".tsv"
 
     if os.path.exists(tsv_path) and (not os.path.exists(zip_path) or not zipfile.is_zipfile(zip_path)):
-        return handle_tsv_conversion_request(conversion_id, tsv_path, lang, geometryType, crs, background_tasks, original_filename=dataset_id)
+        return handle_tsv_conversion_request(conversion_id, tsv_path, lang, geometryType, crs, original_filename=dataset_id)
 
     return handle_zip_conversion_request(conversion_id, zip_path, lang, geometryType, crs, background_tasks, is_user_upload=False, original_filename=dataset_id)
 
@@ -292,7 +291,6 @@ async def cleanup_old_files():
         logging.info("Starting cleanup thread...")
         while True:
             time.sleep(3600)  # Run cleanup every hour
-            from helpers import status_manager
             
             output_path = get_settings().OUTPUT_PATH
             if not os.path.exists(output_path):
@@ -313,10 +311,10 @@ async def cleanup_old_files():
                         os.remove(file_path)
                         logging.info(f"Deleted old file: {filename} (age: {file_age / 3600:.1f} hours)")
                         
-                        # Also remove from status_manager if present
+                        # Also remove from ConversionStatusManager() if present
                         conversion_id = os.path.splitext(filename)[0]
-                        if status_manager.has(conversion_id):
-                            status_manager.remove(conversion_id)
+                        if _status_manager.has(conversion_id):
+                            _status_manager.remove(conversion_id)
                             logging.info(f"Removed {conversion_id} from status tracking")
                     except Exception as e:
                         logging.error(f"Failed to delete file {filename}: {e}")

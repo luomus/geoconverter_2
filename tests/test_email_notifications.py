@@ -2,11 +2,8 @@ import sys
 import os
 from unittest.mock import patch, MagicMock
 
-# Add the src directory to the path so we can import our modules
 sys.path.insert(0, 'src/')
 
-# Provide a lightweight fake settings module to avoid pydantic dependency in tests
-from unittest.mock import MagicMock
 mock_settings = MagicMock()
 _dummy = MagicMock()
 _dummy.EMAIL_ENABLED = False
@@ -23,6 +20,7 @@ mock_settings.Settings.return_value = _dummy
 import sys
 sys.modules['settings'] = mock_settings
 
+sys.path.append('src/')
 from email_notifications import send_simple_email, notify_failure
 
 
@@ -46,7 +44,3 @@ def test_notify_failure():
         mock_send.assert_called_once()
 
 
-if __name__ == "__main__":
-    test_send_email()
-    test_notify_failure()
-    print("All tests passed!")

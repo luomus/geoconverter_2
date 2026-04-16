@@ -13,6 +13,7 @@ import geopandas as gpd
 import settings
 import dask.dataframe as dd
 import os
+import zipfile
 from models import _status_manager, write_lock
 from pyogrio import write_dataframe
 
@@ -189,6 +190,32 @@ def cleanup_files(*file_paths: str) -> None:
                 logging.debug(f"Cleaned up file: {file_path}")
             except OSError as e:
                 logging.warning(f"Failed to clean up {file_path}: {e}")
+
+
+def validate_shapefile_zip(zip_path: str) -> None:
+    """Validate that a ZIP archive contains required shapefile sidecar files."""
+    try:
+        with zipfile.ZipFile(zip_path) as zf:
+            names = {n.lower() for n in zf.namelist() if not n.endswith('/')}
+    except zipfile.BadZipFile as e:
+        raise ValueError("Uploaded ZIP file is not a valid archive.") from e
+
+    shp_files = [n for n in names if n.endswith('.shp')]
+    if not shp_files:
+        return
+
+    required = {'.shx', '.dbf'}
+    missing_files = []
+    for shp in shp_files:
+        stem = shp[:-4]
+        missing = [stem + ext for ext in required if stem + ext not in names]
+        if missing:
+            missing_files.append((shp, missing))
+
+    if missing_files:
+        messages = [f"'{os.path.basename(shp)}' missing {', '.join(os.path.basename(m) for m in missing)}" for shp, missing in missing_files]
+        raise ValueError(f"Shapefile ZIP is missing required files: {', '.join(messages)}")
+
 
 def process_partition_for_geopackage(partition, crs: str) -> Optional[gpd.GeoDataFrame]:
     """Process a partition: compute, convert CRS, validate, and transform geometries.

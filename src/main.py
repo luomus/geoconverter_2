@@ -16,6 +16,7 @@ from typing import Literal, Optional
 import settings
 from gis_to_table import gis_to_table
 from email_notifications import notify_failure
+from helpers import validate_shapefile_zip
 import uuid
 import threading
 from models import _status_manager
@@ -64,17 +65,17 @@ def get_settings():
 
 @app.post("/convert-to-table",
     summary="Convert GIS file to CSV table",
-    description="Upload a GIS file (Shapefile, GeoJSON, GPKG, etc.) and get back a CSV file with geometry as WKT",
+    description="Upload a GIS file (GeoJSON, GPKG, KML, GML, or a ZIP archive for Shapefiles) and get back a CSV file with geometry as WKT",
     tags=["File Conversion"],
     responses={
         200: {"description": "CSV file with converted data", "content": {"text/csv": {}}},
-        400: {"model": ErrorResponse, "description": "Unsupported file type"},
+        400: {"model": ErrorResponse, "description": "Unsupported file type or bare .shp upload"},
         500: {"model": ErrorResponse, "description": "Conversion failed"}
     }
 )
 async def convert_gis_to_table(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(..., description="GIS file to convert (SHP, GeoJSON, GPKG, KML, GML, ZIP)")
+    file: UploadFile = File(..., description="GIS file to convert (GeoJSON, GPKG, KML, GML, or ZIP for Shapefiles)")
 ):
     """
     Convert a GIS file to a tabular CSV using the gis_to_table() function.
@@ -83,8 +84,13 @@ async def convert_gis_to_table(
     logging.info(f"Received GIS file: {file.filename}, format: {file.content_type}")
 
     # Validate file extension
-    SUPPORTED_EXTENSIONS = {'.shp', '.geojson', '.json', '.gpkg', '.kml', '.gml', '.zip'}
-    basename, suffix = os.path.splitext(file.filename)
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No filename provided.")
+    filename = file.filename
+    SUPPORTED_EXTENSIONS = {'.geojson', '.json', '.gpkg', '.kml', '.gml', '.zip'}
+    basename, suffix = os.path.splitext(filename)
+    if suffix == '.shp':
+        raise HTTPException(status_code=400, detail="Bare .shp files are not supported. Upload the shapefile as a ZIP archive containing .shp, .shx, .dbf, and .prj files.")
     if suffix not in SUPPORTED_EXTENSIONS:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}")
 
@@ -94,6 +100,14 @@ async def convert_gis_to_table(
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
             shutil.copyfileobj(file.file, tmp)
             tmp_path = tmp.name
+
+        # For ZIP uploads, check that shapefile sidecar files are present
+        if suffix == '.zip':
+            try:
+                validate_shapefile_zip(tmp_path)
+            except ValueError as e:
+                os.remove(tmp_path)
+                raise HTTPException(status_code=400, detail=str(e))
 
         # Perform conversion (this saves CSV alongside the GIS file)
         csv_path = gis_to_table(tmp_path)
@@ -138,10 +152,11 @@ async def convert_with_file(
 ):
     """API endpoint to receive ZIP TSV file and return a GeoPackage."""
 
-    logging.info(f"Received file: {file.filename}, content-type: {file.content_type}, language: {lang}, geometryType: {geometryType}, crs: {crs}")
+    filename = file.filename or ""
+    logging.info(f"Received file: {filename}, content-type: {file.content_type}, language: {lang}, geometryType: {geometryType}, crs: {crs}")
 
     # Check if TSV file by extension or content type
-    is_tsv = (file.filename.lower().endswith('.tsv') or 
+    is_tsv = (filename.lower().endswith('.tsv') or 
               file.content_type == "text/tab-separated-values")
 
     if is_tsv:
@@ -155,7 +170,8 @@ async def convert_with_file(
         return handle_tsv_conversion_request(conversion_id, temp_tsv_path, lang, geometryType, crs)
 
     else:
-        base_id = os.path.splitext(file.filename)[0]
+        filename = file.filename or ""
+        base_id = os.path.splitext(filename)[0]
         conversion_id = str(uuid.uuid4())
 
         # Process zip files (citable data download)

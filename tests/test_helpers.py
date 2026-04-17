@@ -12,6 +12,7 @@ from shapely.wkt import loads
 import tempfile
 import os
 import sys
+import zipfile
 from unittest.mock import MagicMock
 from unittest.mock import patch
 import dask.dataframe as dd
@@ -37,7 +38,8 @@ from helpers import (
     process_wkt_geometry,
     check_existing_conversion,
     process_partition_for_geopackage,
-    write_gdf_to_geopackage
+    write_gdf_to_geopackage,
+    validate_shapefile_zip
 )
 
 def test_safely_parse_wkt():
@@ -248,6 +250,29 @@ def test_cleanup_files():
     
     # Should not raise error for non-existing files
     cleanup_files("/nonexistent/file1.txt", "/nonexistent/file2.txt")
+
+
+def test_validate_shapefile_zip_success():
+    """Test validate_shapefile_zip accepts a ZIP with required shapefile sidecars."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = os.path.join(tmpdir, "shapefile.zip")
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("test.shp", "dummy")
+            zf.writestr("test.shx", "dummy")
+            zf.writestr("test.dbf", "dummy")
+
+        validate_shapefile_zip(zip_path)
+
+
+def test_validate_shapefile_zip_missing_sidecars():
+    """Test validate_shapefile_zip rejects a ZIP missing required shapefile sidecars."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        zip_path = os.path.join(tmpdir, "shapefile.zip")
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("test.shp", "dummy")
+
+        with pytest.raises(ValueError, match="missing required files"):
+            validate_shapefile_zip(zip_path)
 
 
 def test_check_existing_conversion():

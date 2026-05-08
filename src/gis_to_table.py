@@ -80,6 +80,9 @@ def gis_to_table(gis_file):
     if gdf is None or gdf.empty:
         raise RuntimeError("No features found in the GIS file")
 
+    if gdf.crs is None:
+        raise RuntimeError("No coordinate reference system found in the GIS file")
+
     # Convert single-point MultiGeometries to simpler types
     def simplify_multigeometries(geom):
         if geom.geom_type in ['MultiPoint', 'MultiLineString', 'MultiPolygon'] and len(geom.geoms) == 1:

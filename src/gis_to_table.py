@@ -12,12 +12,6 @@ os.environ["OGR_FORCE_ASCII"] = "YES"
 warnings.filterwarnings("ignore", message=".*does not support open option.*")
 warnings.filterwarnings("ignore", message="More than one layer found.*")
 
-CRS_MAPPING = {
-    "epsg:3067": "ETRS-TM35FIN",
-    "epsg:4326": "wgs84",
-    "epsg:2393": "ykj"
-}
-
 # Setup logging
 app_settings = settings.Settings()
 log_level = getattr(logging, app_settings.LOGGING.upper(), logging.INFO)
@@ -83,6 +77,9 @@ def gis_to_table(gis_file):
     if gdf.crs is None:
         raise RuntimeError("No coordinate reference system found in the GIS file")
 
+    # Convert to WGS84
+    gdf = gdf.to_crs("EPSG:4326")
+
     # Convert single-point MultiGeometries to simpler types
     def simplify_multigeometries(geom):
         if geom.geom_type in ['MultiPoint', 'MultiLineString', 'MultiPolygon'] and len(geom.geoms) == 1:
@@ -92,9 +89,7 @@ def gis_to_table(gis_file):
     gdf.geometry = gdf.geometry.apply(simplify_multigeometries)
 
     # Convert to table format
-    crs_info = CRS_MAPPING.get(str(gdf.crs).lower(), "Not supported")
-    gdf["Koordinaatit - Keruutapahtuma"] = gdf.geometry.to_wkt()
-    gdf["Koordinaatit@System - Keruutapahtuma"] = crs_info
+    gdf["footprintWKT"] = gdf.geometry.to_wkt()
     df = gdf.drop(columns=gdf.geometry.name)
 
     # Save as CSV with proper Excel-compatible settings

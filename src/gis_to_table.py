@@ -78,7 +78,12 @@ def gis_to_table(gis_file):
         raise RuntimeError("No coordinate reference system found in the GIS file")
 
     # Convert to WGS84
-    gdf = gdf.to_crs("EPSG:4326")
+    try:
+        original_crs = str(gdf.crs)
+        gdf = gdf.to_crs("EPSG:4326")
+        logging.info(f"Converted from {original_crs} to WGS84")
+    except Exception as e:
+        raise RuntimeError(f"Failed to convert CRS '{str(gdf.crs)}' to WGS84: {str(e)}")
 
     # Convert single-point MultiGeometries to simpler types
     def simplify_multigeometries(geom):

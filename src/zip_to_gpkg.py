@@ -30,6 +30,7 @@ from helpers import (
 )
 from email_notifications import notify_failure
 
+
 warnings.filterwarnings("ignore")
 
 pd.options.mode.use_inf_as_na = True
@@ -87,8 +88,15 @@ def convert_file(job: ConversionJob) -> None:
     try:
         logging.debug(f"Processing {job.input_path} -> {job.conversion_id}")
 
-        temp_file_path = _extract_occurrences_file(job.input_path)
-        process_tsv_data(job, temp_file_path, cleanup_temp=True)
+        file_type, source_filename = _detect_file_in_zip(job.input_path)
+
+        if file_type == "occurrences":
+            temp_file_path = _extract_file_from_zip(job.input_path, source_filename)
+            process_tsv_data(job, temp_file_path, cleanup_temp=True)
+        else:
+            from rows_to_gpkg import process_rows_data
+            temp_file_path = _extract_file_from_zip(job.input_path, source_filename)
+            process_rows_data(job, temp_file_path, source_filename, cleanup_temp=True)
         
         final_output = os.path.join(app_settings.OUTPUT_PATH, f"{job.conversion_id}.zip")
             
@@ -117,35 +125,51 @@ def convert_file(job: ConversionJob) -> None:
         _status_manager.update(job.conversion_id, "failed", error=str(e))
         cleanup_files(job.output_gpkg)
         
-def _extract_occurrences_file(zip_path: str) -> str:
-    """Extract occurrences.txt from ZIP to a temporary file.
-    
+def _detect_file_in_zip(zip_path: str) -> tuple:
+    """Detect which supported file type is present in the ZIP.
+
+    Returns:
+        Tuple of (file_type, filename) where file_type is 'occurrences' or 'rows'.
+
+    Raises:
+        ValueError: If neither occurrences.txt nor a rows_* file is found.
+    """
+    with ZipFile(zip_path, "r") as zf:
+        names = zf.namelist()
+    if "occurrences.txt" in names:
+        return "occurrences", "occurrences.txt"
+    rows_files = [n for n in names if os.path.basename(n).startswith("rows_")]
+    if rows_files:
+        return "rows", rows_files[0]
+    raise ValueError("ZIP contains neither occurrences.txt nor a rows_* file")
+
+def _extract_file_from_zip(zip_path: str, filename: str) -> str:
+    """Extract a named file from ZIP to a temporary file.
+
     Args:
         zip_path: Path to the ZIP file
-        
+        filename: Name of the file inside the ZIP to extract
+
     Returns:
-        Path to the temporary file containing occurrences.txt
+        Path to the temporary file
     """
-    occurrence_file = "occurrences.txt"
-    
-    logging.debug(f"Extracting {occurrence_file} from ZIP...")
-    
+    logging.debug(f"Extracting {filename} from ZIP...")
+
     with ZipFile(zip_path, "r") as zip_file:
-        with zip_file.open(occurrence_file) as source_file:
+        with zip_file.open(filename) as source_file:
             with tempfile.NamedTemporaryFile(delete=False) as temp_file:
                 temp_file.write(source_file.read())
                 return temp_file.name
 
-def create_output_zip(job: ConversionJob):
-    """Create output ZIP containing the GPKG and all original files except occurrences.txt."""
+def create_output_zip(job: ConversionJob, skip_file: str = "occurrences.txt"):
+    """Create output ZIP containing the GPKG and all original files except the source data file."""
     logging.debug(f"Creating output ZIP: {job.input_path} with GPKG: {job.output_gpkg}")
     zip_path_out = os.path.join(app_settings.OUTPUT_PATH, job.conversion_id + '.zip')
 
     with ZipFile(job.input_path, "r") as zin, ZipFile(zip_path_out, "w", compression=zipfile.ZIP_DEFLATED) as zout:
         for zi in zin.infolist():
-            # Skip the occurrences.txt at the root of the input zip
-            if zi.filename == "occurrences.txt":
-                logging.debug("Skipping occurrences.txt in output zip")
+            if zi.filename == skip_file:
+                logging.debug(f"Skipping {skip_file} in output zip")
                 continue
 
             if zi.is_dir():

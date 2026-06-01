@@ -7,3 +7,6 @@ bin/uvicorn_start
 bin/update
 .venv
 __pycache__
+test_data/
+copilot-instructions.md
+todo

@@ -68,6 +68,7 @@ def process_wkt_geometry(ddf: dd.DataFrame, wkt_column: str) -> dd.DataFrame:
     ddf["geometry"] = ddf[wkt_column].map(safely_parse_wkt)
     ddf = ddf.set_geometry("geometry")
     ddf["geometry"] = ddf["geometry"].apply(normalize_geometry_collection)
+    ddf = ddf.drop(columns=[wkt_column])  # Drop the original WKT column after parsing
     return ddf
 
 def convert_boolean_value(value: str) -> Optional[bool]:

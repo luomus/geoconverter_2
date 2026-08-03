@@ -109,6 +109,7 @@ def process_tsv_data(job: ConversionJob, tsv_file_path: str,) -> None:
             dtype=str
         )
 
+        ddf_original = ddf
         ddf = process_wkt_geometry(ddf, 'WGS84 WKT')
 
         logging.debug(f"Writing to GeoPackage {job.output_gpkg}...")
@@ -133,9 +134,15 @@ def process_tsv_data(job: ConversionJob, tsv_file_path: str,) -> None:
         # Set to 99% when done processing partitions (100% only when status is "complete")
         _status_manager.update(job.conversion_id, "processing", progress_percent=99)
 
-        # Check if GPKG was actually created
-        if not created or not os.path.exists(job.output_gpkg):
-            raise ValueError(f"No valid geometries found in the data. GPKG file could not be created.")
+        # No geometries found — use original unfiltered data with null geometry
+        if not created:
+            logging.warning(f"No valid geometries found for {job.conversion_id}; writing data without geometry.")
+            fallback_df = ddf_original.drop(columns=['WGS84 WKT'], errors='ignore').compute()
+            fallback_df['geometry'] = None
+            fallback_gdf = gpd.GeoDataFrame(fallback_df, geometry='geometry', crs=job.mapped_crs)
+            wrote = write_gdf_to_geopackage(fallback_gdf, job.output_gpkg, append=False)
+            if wrote:
+                created = True
 
     finally:
         if created:

@@ -86,6 +86,20 @@ class ConversionJob:
         """Get the mapped geometry type."""
         return GEOMETRY_TYPE_MAPPING[self.geo_type]
 
+    def failure_details(self) -> dict:
+        """Job context for error notification emails."""
+        input_size = os.path.getsize(self.input_path) if os.path.exists(self.input_path) else "N/A (file missing)"
+        return {
+            "Endpoint": "POST /" if self.is_user_upload else "GET /{dataset_id}",
+            "Filename": self.original_filename,
+            "Is user upload": self.is_user_upload,
+            "Language": self.language,
+            "Geometry type": self.geo_type,
+            "CRS": self.crs,
+            "Input": self.input_path,
+            "Input size (bytes)": input_size,
+        }
+
 # Global singleton instance for thread-safe status tracking
 _status_manager = ConversionStatusManager()
     

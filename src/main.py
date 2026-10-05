@@ -128,7 +128,11 @@ async def convert_gis_to_table(
         logging.error(f"GIS-to-table conversion failed: {e}")
         
         # Send email notification for API failure
-        notify_failure(f"API Error in /convert-to-table: {str(e)}")
+        notify_failure(f"{type(e).__name__}: {e}", details={
+            "Endpoint": "POST /convert-to-table",
+            "Filename": filename,
+            "Content type": file.content_type,
+        })
         
         raise HTTPException(status_code=500, detail=str(e))
 

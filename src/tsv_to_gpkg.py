@@ -53,10 +53,7 @@ def handle_tsv_conversion_request(conversion_id: str, tsv_path: str, language: s
 
     _status_manager.update(job.conversion_id, "processing", is_user_upload=job.is_user_upload, original_filename=job.original_filename)
     
-    try:
-        convert_file(job)
-    except Exception as e:
-        raise
+    convert_file(job)
     return job.conversion_id
 
 def convert_file(job: ConversionJob) -> None:
@@ -85,11 +82,10 @@ def convert_file(job: ConversionJob) -> None:
     except Exception as e:
         logging.error(f"Error during conversion: {e}")
         
-        # Send email notification for conversion failure
-        notify_failure(f"{type(e).__name__}: {e}", job.conversion_id, details=job.failure_details())
-        
         _status_manager.update(job.conversion_id, "failed", error=str(e))
-        cleanup_files(job.output_gpkg)
+        cleanup_files(job.output_gpkg, os.path.join(app_settings.OUTPUT_PATH, f"{job.conversion_id}.zip"))
+
+        notify_failure(f"{type(e).__name__}: {e}", job.conversion_id, details=job.failure_details())
 
 def process_tsv_data(job: ConversionJob, tsv_file_path: str,) -> None:
     """Process TSV data with standard headers (no multi-language rows)."""

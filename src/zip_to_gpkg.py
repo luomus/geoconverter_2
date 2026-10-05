@@ -118,11 +118,10 @@ def convert_file(job: ConversionJob) -> None:
     except Exception as e:
         logging.error(f"Error during conversion: {e}")
         
-        # Send email notification for conversion failure
-        notify_failure(f"{type(e).__name__}: {e}", job.conversion_id, details=job.failure_details())
-        
         _status_manager.update(job.conversion_id, "failed", error=str(e))
-        cleanup_files(job.output_gpkg)
+        cleanup_files(job.output_gpkg, os.path.join(app_settings.OUTPUT_PATH, f"{job.conversion_id}.zip"))
+
+        notify_failure(f"{type(e).__name__}: {e}", job.conversion_id, details=job.failure_details())
         
 def _detect_file_in_zip(zip_path: str) -> tuple:
     """Detect which supported file type is present in the ZIP.

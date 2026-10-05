@@ -16,7 +16,7 @@ from typing import Literal, Optional
 import settings
 from gis_to_table import gis_to_table
 from email_notifications import notify_failure
-from helpers import validate_shapefile_zip
+from helpers import validate_shapefile_zip, cleanup_files
 import uuid
 import threading
 from models import _status_manager
@@ -95,6 +95,8 @@ async def convert_gis_to_table(
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {suffix}")
 
 
+    tmp_path = None
+    csv_path = None
     try:
         # Save uploaded GIS file to temp location
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -106,7 +108,6 @@ async def convert_gis_to_table(
             try:
                 validate_shapefile_zip(tmp_path)
             except ValueError as e:
-                os.remove(tmp_path)
                 raise HTTPException(status_code=400, detail=str(e))
 
         # Perform conversion (this saves CSV alongside the GIS file)
@@ -124,7 +125,12 @@ async def convert_gis_to_table(
         logging.debug(f"Returning CSV file: {csv_path}")
         return FileResponse(csv_path, filename=basename, media_type="text/csv")
 
+    except HTTPException:
+        cleanup_files(tmp_path, csv_path)
+        raise
+
     except Exception as e:
+        cleanup_files(tmp_path, csv_path)
         logging.error(f"GIS-to-table conversion failed: {e}")
         
         # Send email notification for API failure
@@ -298,6 +304,9 @@ async def convert_with_id(
     conversion_id = str(uuid.uuid4())
     zip_path = get_settings().FILE_PATH + dataset_id + ".zip"
     tsv_path = get_settings().FILE_PATH + dataset_id + ".tsv"
+
+    if not os.path.exists(zip_path) and not os.path.exists(tsv_path):
+        raise HTTPException(status_code=404, detail="File not found.")
 
     if os.path.exists(tsv_path) and (not os.path.exists(zip_path) or not zipfile.is_zipfile(zip_path)):
         return handle_tsv_conversion_request(conversion_id, tsv_path, lang, geometryType, crs, original_filename=dataset_id)

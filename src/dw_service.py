@@ -17,7 +17,10 @@ def is_valid_download_request(id, person_token = None):
     if person_token:
         payload = { "personToken": person_token }
 
-    r = requests.get(url, params=payload)
+    try:
+        r = requests.get(url, params=payload, timeout=30)
+    except requests.RequestException:
+        return False
 
     if r.status_code != 200:
       return False

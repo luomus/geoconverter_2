@@ -4,6 +4,7 @@ from shapely.geometry import (
     GeometryCollection, LineString, MultiLineString, MultiPoint,
     MultiPolygon, Point, Polygon
 )
+from shapely.ops import unary_union
 from shapely.wkt import loads
 import logging
 from collections import defaultdict
@@ -111,16 +112,23 @@ def normalize_geometry_collection(geometry: Any) -> Any:
     elif geometry_types == {Point}:
         return MultiPoint(geometries)
     elif geometry_types == {Polygon}:
-        return MultiPolygon(geometries)
+        return union_to_multipolygon(geometries)
     elif geometry_types == {MultiLineString}:
         return MultiLineString([g for geom in geometries for g in geom.geoms])
     elif geometry_types == {MultiPoint}:
         return MultiPoint([g for geom in geometries for g in geom.geoms])
     elif geometry_types == {MultiPolygon}:
-        return MultiPolygon([g for geom in geometries for g in geom.geoms])
+        return union_to_multipolygon([g for geom in geometries for g in geom.geoms])
     
     # Handle mixed geometry types by buffering and dissolving
     return buffer_and_dissolve_mixed_geometries(geometries)
+
+def union_to_multipolygon(polygons: list) -> MultiPolygon:
+    """Union polygons (overlaps would make a plain MultiPolygon invalid) into a MultiPolygon."""
+    dissolved = unary_union(polygons)
+    if isinstance(dissolved, Polygon):
+        return MultiPolygon([dissolved])
+    return dissolved
 
 def buffer_and_dissolve_mixed_geometries(geometries: list) -> Any:
     """Buffer points and lines, then dissolve into a MultiPolygon."""
